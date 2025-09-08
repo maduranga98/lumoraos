@@ -1,0 +1,482 @@
+import React, { useState } from "react";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
+
+import { auth, db } from "../../services/firebase";
+import InputField from "../ui/InputField";
+import Button from "../ui/Button";
+import FailDialog from "../ui/FailDialog";
+import SuccessDialog from "../ui/SuccessDialog";
+
+const Signup = () => {
+  const navigate = useNavigate();
+
+  const [formData, setFormData] = useState({
+    fullName: "",
+    username: "",
+    phoneNumber: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [showError, setShowError] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
+
+  const handleInputChange = (field) => (e) => {
+    let value = e.target.value;
+
+    // Format username
+    if (field === "username") {
+      value = value.toLowerCase().replace(/[^a-z0-9_]/g, "");
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors((prev) => ({
+        ...prev,
+        [field]: "",
+      }));
+    }
+  };
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    // Full Name validation
+    if (!formData.fullName.trim()) {
+      newErrors.fullName = "Full name is required";
+    } else if (formData.fullName.trim().length < 2) {
+      newErrors.fullName = "Full name must be at least 2 characters";
+    }
+
+    // Username validation
+    if (!formData.username.trim()) {
+      newErrors.username = "Username is required";
+    } else if (formData.username.length < 3) {
+      newErrors.username = "Username must be at least 3 characters";
+    } else if (formData.username.length > 20) {
+      newErrors.username = "Username must be less than 20 characters";
+    } else if (!/^[a-z0-9_]+$/.test(formData.username)) {
+      newErrors.username =
+        "Username can only contain lowercase letters, numbers, and underscores";
+    }
+
+    // Phone number validation (optional but if provided, should be valid)
+    if (
+      formData.phoneNumber.trim() &&
+      !/^\+?[\d\s-()]+$/.test(formData.phoneNumber)
+    ) {
+      newErrors.phoneNumber = "Please enter a valid phone number";
+    }
+
+    // Password validation
+    if (!formData.password.trim()) {
+      newErrors.password = "Password is required";
+    } else if (formData.password.length < 6) {
+      newErrors.password = "Password must be at least 6 characters";
+    } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(formData.password)) {
+      newErrors.password =
+        "Password must contain at least one uppercase letter, one lowercase letter, and one number";
+    }
+
+    // Confirm password validation
+    if (!formData.confirmPassword.trim()) {
+      newErrors.confirmPassword = "Please confirm your password";
+    } else if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = "Passwords do not match";
+    }
+
+    // Terms acceptance validation
+    if (!acceptTerms) {
+      newErrors.terms = "You must accept the terms and conditions";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const checkUsernameAvailability = async (username) => {
+    try {
+      // Alternative method: Check if username exists in Firestore using query
+      const usernamesRef = collection(db, "usernames");
+      const q = query(usernamesRef, where("__name__", "==", username));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.empty;
+    } catch (error) {
+      console.error("Error checking username availability:", error);
+      try {
+        // Fallback method: Direct document reference
+        const usernameDocRef = doc(db, "usernames", username);
+        const usernameDoc = await getDoc(usernameDocRef);
+        return !usernameDoc.exists();
+      } catch (fallbackError) {
+        console.error("Fallback method also failed:", fallbackError);
+        return false;
+      }
+    }
+  };
+
+  const registerUser = async (userData) => {
+    try {
+      // Create a temporary email using username for Firebase Auth
+      const tempEmail = `${userData.username}@lumoraos.local`;
+
+      // Create user with Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        tempEmail,
+        userData.password
+      );
+
+      const user = userCredential.user;
+
+      // Update the user's display name
+      await updateProfile(user, {
+        displayName: userData.fullName,
+      });
+
+      // Create user document in Firestore
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        fullName: userData.fullName,
+        username: userData.username,
+        phoneNumber: userData.phoneNumber || "",
+        email: tempEmail,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        isActive: true,
+      });
+
+      // Reserve the username
+      await setDoc(doc(db, "usernames", userData.username), {
+        uid: user.uid,
+        createdAt: serverTimestamp(),
+      });
+
+      return {
+        success: true,
+        user: {
+          uid: user.uid,
+          fullName: userData.fullName,
+          username: userData.username,
+        },
+      };
+    } catch (error) {
+      console.error("Registration error:", error);
+
+      let errorMessage = "An unexpected error occurred. Please try again.";
+
+      if (error.code === "auth/email-already-in-use") {
+        errorMessage = "This username is already taken. Please choose another.";
+      } else if (error.code === "auth/weak-password") {
+        errorMessage =
+          "Password is too weak. Please choose a stronger password.";
+      } else if (error.code === "auth/invalid-email") {
+        errorMessage = "Invalid username format. Please try again.";
+      } else if (error.code === "auth/network-request-failed") {
+        errorMessage =
+          "Network error. Please check your connection and try again.";
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!validateForm()) return;
+
+    setLoading(true);
+
+    try {
+      // Check username availability
+      const isUsernameAvailable = await checkUsernameAvailability(
+        formData.username
+      );
+
+      if (!isUsernameAvailable) {
+        setErrorMessage("Username is already taken. Please choose another.");
+        setShowError(true);
+        setLoading(false);
+        return;
+      }
+
+      // Register user with Firebase
+      const result = await registerUser({
+        fullName: formData.fullName,
+        username: formData.username,
+        phoneNumber: formData.phoneNumber,
+        password: formData.password,
+      });
+
+      if (result.success) {
+        console.log("Registration successful:", result.user);
+        setSuccessMessage(
+          "Account created successfully! You can now log in with your username and password."
+        );
+        setShowSuccess(true);
+
+        // Clear form
+        setFormData({
+          fullName: "",
+          username: "",
+          phoneNumber: "",
+          password: "",
+          confirmPassword: "",
+        });
+        setAcceptTerms(false);
+      } else {
+        setErrorMessage(result.error);
+        setShowError(true);
+      }
+    } catch (error) {
+      console.error("Unexpected registration error:", error);
+      setErrorMessage("An unexpected error occurred. Please try again.");
+      setShowError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSuccessClose = () => {
+    setShowSuccess(false);
+    // Redirect to login page after successful registration
+    // navigate("/login");
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-8 h-8 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+              />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            Join LumoraOS
+          </h1>
+          <p className="text-gray-600 text-sm">
+            Create your cooperative account
+          </p>
+        </div>
+
+        {/* Registration Form */}
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <InputField
+            label="Full Name"
+            type="text"
+            placeholder="Enter your full name"
+            value={formData.fullName}
+            onChange={handleInputChange("fullName")}
+            error={errors.fullName}
+            required
+            autoComplete="name"
+          />
+
+          <InputField
+            label="Username"
+            type="text"
+            placeholder="Choose a username"
+            value={formData.username}
+            onChange={handleInputChange("username")}
+            error={errors.username}
+            required
+            autoComplete="username"
+          />
+
+          <InputField
+            label="Phone Number"
+            type="tel"
+            placeholder="Enter your phone number (optional)"
+            value={formData.phoneNumber}
+            onChange={handleInputChange("phoneNumber")}
+            error={errors.phoneNumber}
+            autoComplete="tel"
+          />
+
+          <InputField
+            label="Password"
+            type="password"
+            placeholder="Create a strong password"
+            value={formData.password}
+            onChange={handleInputChange("password")}
+            error={errors.password}
+            required
+            autoComplete="new-password"
+          />
+
+          <InputField
+            label="Confirm Password"
+            type="password"
+            placeholder="Confirm your password"
+            value={formData.confirmPassword}
+            onChange={handleInputChange("confirmPassword")}
+            error={errors.confirmPassword}
+            required
+            autoComplete="new-password"
+          />
+
+          {/* Password Requirements */}
+          <div className="text-xs text-gray-500 space-y-1">
+            <p>Password must contain:</p>
+            <ul className="list-disc list-inside space-y-0.5 ml-2">
+              <li
+                className={
+                  formData.password.length >= 6 ? "text-green-600" : ""
+                }
+              >
+                At least 6 characters
+              </li>
+              <li
+                className={
+                  /(?=.*[a-z])/.test(formData.password) ? "text-green-600" : ""
+                }
+              >
+                One lowercase letter
+              </li>
+              <li
+                className={
+                  /(?=.*[A-Z])/.test(formData.password) ? "text-green-600" : ""
+                }
+              >
+                One uppercase letter
+              </li>
+              <li
+                className={
+                  /(?=.*\d)/.test(formData.password) ? "text-green-600" : ""
+                }
+              >
+                One number
+              </li>
+            </ul>
+          </div>
+
+          {/* Terms and Conditions */}
+          <div className="space-y-2">
+            <label className="flex items-start">
+              <input
+                type="checkbox"
+                checked={acceptTerms}
+                onChange={(e) => {
+                  setAcceptTerms(e.target.checked);
+                  if (errors.terms) {
+                    setErrors((prev) => ({
+                      ...prev,
+                      terms: "",
+                    }));
+                  }
+                }}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mt-0.5 flex-shrink-0"
+              />
+              <span className="ml-2 text-sm text-gray-600">
+                I agree to the{" "}
+                <a href="#" className="text-blue-600 hover:underline">
+                  Terms of Service
+                </a>{" "}
+                and{" "}
+                <a href="#" className="text-blue-600 hover:underline">
+                  Privacy Policy
+                </a>
+              </span>
+            </label>
+            {errors.terms && (
+              <p className="text-sm text-red-600">{errors.terms}</p>
+            )}
+          </div>
+
+          {/* Submit Button */}
+          <Button type="submit" loading={loading} className="w-full" size="lg">
+            {loading ? "Creating Account..." : "Create Account"}
+          </Button>
+        </form>
+
+        {/* Login Link */}
+        <div className="mt-6 text-center">
+          <span className="text-sm text-gray-600">
+            Already have an account?{" "}
+            <button
+              type="button"
+              className="text-blue-600 hover:text-blue-800 hover:underline font-medium focus:outline-none"
+              onClick={() => navigate("/login")}
+            >
+              Sign in here
+            </button>
+          </span>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-8 text-center">
+          <p className="text-xs text-gray-500 mb-3">
+            By creating an account, you agree to our terms and privacy policy
+          </p>
+
+          {/* Lumora Ventures Branding */}
+          <div className="border-t border-gray-200 pt-4">
+            <p className="text-xs text-gray-400">
+              Powered by{" "}
+              <span className="font-semibold text-gray-600">
+                Lumora Ventures
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Success Dialog */}
+      <SuccessDialog
+        isOpen={showSuccess}
+        onClose={handleSuccessClose}
+        title="Account Created Successfully!"
+        message={successMessage}
+        buttonText="Continue to Login"
+      />
+
+      {/* Error Dialog */}
+      <FailDialog
+        isOpen={showError}
+        onClose={() => setShowError(false)}
+        title="Registration Failed"
+        message={errorMessage}
+        buttonText="Try Again"
+        onRetry={() => setShowError(false)}
+      />
+    </div>
+  );
+};
+
+export default Signup;
