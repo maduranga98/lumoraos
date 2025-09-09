@@ -1,29 +1,26 @@
 import React, { useState } from "react";
-import {
-  signInWithEmailAndPassword,
-  setPersistence,
-  browserSessionPersistence,
-  browserLocalPersistence,
-} from "firebase/auth";
 import { useNavigate } from "react-router-dom";
-
 import {
   collection,
+  doc,
+  getDoc,
+  updateDoc,
   query,
   where,
   getDocs,
-  doc,
-  getDoc,
+  serverTimestamp,
 } from "firebase/firestore";
-import { auth, db } from "../../services/firebase";
+
+import { db } from "../../services/firebase";
 import InputField from "../ui/InputField";
 import Button from "../ui/Button";
 import FailDialog from "../ui/FailDialog";
 import { useUser } from "../../contexts/userContext";
 
 const Login = () => {
-  const { setUser } = useUser();
+  const { loading: authLoading, setUser } = useUser();
   const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
     usernameOrEmail: "",
     password: "",
@@ -71,117 +68,107 @@ const Login = () => {
     return emailRegex.test(input);
   };
 
-  const getUserEmailFromUsername = async (username) => {
+  const findUserByUsername = async (username) => {
     try {
-      // First, check if username exists in usernames collection
+      // First check if username exists in usernames collection
       const usernameDocRef = doc(db, "usernames", username.toLowerCase());
       const usernameDoc = await getDoc(usernameDocRef);
 
       if (usernameDoc.exists()) {
-        const uid = usernameDoc.data().uid;
-
+        const userId = usernameDoc.data().userId;
         // Get user data from users collection
-        const userDocRef = doc(db, "users", uid);
+        const userDocRef = doc(db, "users", userId);
         const userDoc = await getDoc(userDocRef);
-        setUser({
-          id: userDoc.data().uid,
-          name: userDoc.data().fullName,
-          email: userDoc.data().email,
-          username: userDoc.data().username,
-          phoneNumber: userDoc.data().phoneNumber,
-        });
+
         if (userDoc.exists()) {
-          return userDoc.data().email;
+          return {
+            id: userDoc.id,
+            ...userDoc.data(),
+          };
         }
       }
-
-      // Fallback: create email format like in signup
-      return `${username.toLowerCase()}@lumoraos.local`;
+      return null;
     } catch (error) {
-      console.error("Error getting user email:", error);
-      // Fallback to generated email format
-      return `${username.toLowerCase()}@lumoraos.local`;
+      console.error("Error finding user by username:", error);
+      return null;
     }
   };
 
-  const loginUser = async (emailOrUsername, password) => {
+  const findUserByEmail = async (email) => {
     try {
-      let email = emailOrUsername;
+      // Query users collection by email field
+      const usersRef = collection(db, "users");
+      const emailQuery = query(usersRef, where("email", "==", email));
+      const querySnapshot = await getDocs(emailQuery);
 
-      // If input is not an email, treat it as username and get corresponding email
-      if (!isEmailFormat(emailOrUsername)) {
-        email = await getUserEmailFromUsername(emailOrUsername);
+      if (!querySnapshot.empty) {
+        const userDoc = querySnapshot.docs[0];
+        return {
+          id: userDoc.id,
+          ...userDoc.data(),
+        };
       }
+      return null;
+    } catch (error) {
+      console.error("Error finding user by email:", error);
+      return null;
+    }
+  };
 
-      // Set persistence based on remember me checkbox
-      const persistence = rememberMe
-        ? browserLocalPersistence
-        : browserSessionPersistence;
-      await setPersistence(auth, persistence);
-
-      // Sign in with Firebase
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
-      const user = userCredential.user;
-
-      // Get additional user data from Firestore
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-
-        return {
-          success: true,
-          user: {
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName,
-            fullName: userData.fullName,
-            username: userData.username,
-            phoneNumber: userData.phoneNumber,
-          },
-        };
+  const verifyPassword = async (plainPassword, userDataPassword) => {
+    try {
+      if (plainPassword === userDataPassword) {
+        return true;
       } else {
-        return {
-          success: true,
-          user: {
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName,
-          },
-        };
+        return false;
       }
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("Error verifying password:", error);
+      return false;
+    }
+  };
 
-      let errorMessage = "An unexpected error occurred. Please try again.";
+  const updateLastLogin = async (userId) => {
+    try {
+      const userDocRef = doc(db, "users", userId);
+      await updateDoc(userDocRef, {
+        lastLoginAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("Error updating last login:", error);
+      // Don't throw error here, login should still succeed
+    }
+  };
 
-      if (error.code === "auth/user-not-found") {
-        errorMessage = "No account found with this username or email.";
-      } else if (error.code === "auth/wrong-password") {
-        errorMessage = "Incorrect password. Please try again.";
-      } else if (error.code === "auth/invalid-email") {
-        errorMessage = "Invalid email format.";
-      } else if (error.code === "auth/user-disabled") {
-        errorMessage =
-          "This account has been disabled. Please contact support.";
-      } else if (error.code === "auth/too-many-requests") {
-        errorMessage = "Too many failed attempts. Please try again later.";
-      } else if (error.code === "auth/network-request-failed") {
-        errorMessage =
-          "Network error. Please check your connection and try again.";
-      } else if (error.code === "auth/invalid-credential") {
-        errorMessage =
-          "Invalid username/email or password. Please check your credentials.";
-      }
+  const createSession = (userData, rememberMe) => {
+    const sessionData = {
+      userId: userData.userId || userData.id,
+      username: userData.username,
+      loginTime: new Date().toISOString(),
+      rememberMe: rememberMe,
+    };
 
-      return {
-        success: false,
-        error: errorMessage,
-      };
+    const userDataForContext = {
+      userId: userData.userId || userData.id,
+      fullName: userData.fullName,
+      username: userData.username,
+      phoneNumber: userData.phoneNumber || "",
+      isActive: userData.isActive,
+      createdAt: userData.createdAt,
+    };
+
+    // Set user in context
+    console.log(userDataForContext);
+    setUser(userDataForContext);
+
+    // Store in localStorage based on remember me preference
+    if (rememberMe) {
+      localStorage.setItem("lumoraUser", JSON.stringify(userDataForContext));
+      localStorage.setItem("lumoraSession", JSON.stringify(sessionData));
+    } else {
+      sessionStorage.setItem("lumoraUser", JSON.stringify(userDataForContext));
+      sessionStorage.setItem("lumoraSession", JSON.stringify(sessionData));
     }
   };
 
@@ -193,33 +180,84 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const result = await loginUser(
-        formData.usernameOrEmail,
-        formData.password
+      let userData = null;
+      const input = formData.usernameOrEmail.trim();
+
+      // Determine if input is email or username and find user
+      if (isEmailFormat(input)) {
+        userData = await findUserByEmail(input);
+      } else {
+        userData = await findUserByUsername(input);
+      }
+
+      // Check if user exists
+      if (!userData) {
+        setErrorMessage("No account found with this username or email.");
+        setShowError(true);
+        setLoading(false);
+        return;
+      }
+
+      // Check if account is active
+      if (!userData.isActive) {
+        setErrorMessage(
+          "This account has been disabled. Please contact support."
+        );
+        setShowError(true);
+        setLoading(false);
+        return;
+      }
+
+      // Verify password
+      const isPasswordValid = verifyPassword(
+        formData.password,
+        userData.password
       );
 
-      if (result.success) {
-        console.log("Login successful:", result.user);
-
-        // Clear form
-        setFormData({
-          usernameOrEmail: "",
-          password: "",
-        });
-
-        // Redirect to dashboard or home page
-        navigate("/dashboard");
-        alert("Login successful! Redirecting to dashboard...");
-
-        // You can also dispatch to a global state management system
-        // dispatch(setUser(result.user));
-      } else {
-        setErrorMessage(result.error);
+      if (!isPasswordValid) {
+        setErrorMessage("Incorrect password. Please try again.");
         setShowError(true);
+        setLoading(false);
+        return;
       }
+
+      // Update last login timestamp
+      await updateLastLogin(userData.userId || userData.id);
+
+      // Create user session
+      createSession(userData, rememberMe);
+
+      // Clear form
+      setFormData({
+        usernameOrEmail: "",
+        password: "",
+      });
+
+      // Show success message briefly
+      setErrorMessage("Login successful! Welcome back.");
+      setShowError(true);
+
+      // Navigate to dashboard after brief delay
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 1000);
     } catch (error) {
-      console.error("Unexpected login error:", error);
-      setErrorMessage("An unexpected error occurred. Please try again.");
+      console.error("Login error:", error);
+
+      let errorMsg = "An unexpected error occurred. Please try again.";
+
+      // Handle specific Firestore errors
+      if (error.code === "permission-denied") {
+        errorMsg = "Permission denied. Please check your network connection.";
+      } else if (error.code === "unavailable") {
+        errorMsg = "Service temporarily unavailable. Please try again later.";
+      } else if (error.message.includes("network")) {
+        errorMsg = "Network error. Please check your connection and try again.";
+      } else if (error.message === "Too many requests") {
+        errorMsg = "Too many failed attempts. Please try again later.";
+      }
+
+      setErrorMessage(errorMsg);
       setShowError(true);
     } finally {
       setLoading(false);
@@ -227,15 +265,26 @@ const Login = () => {
   };
 
   const handleForgotPassword = () => {
-    // You can implement password reset functionality here
     console.log("Forgot password clicked");
-
-    // Example implementation:
     // navigate("/forgot-password");
     alert(
       "Forgot password functionality would redirect to password reset page"
     );
   };
+
+  // Show loading while auth state is being determined
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-3 text-gray-600">Loading...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -318,16 +367,13 @@ const Login = () => {
 
         {/* Additional Options */}
         <div className="mt-6 space-y-3">
-          {/* Sign Up Link */}
           <div className="text-center">
             <span className="text-sm text-gray-600">
               Don't have an account?{" "}
               <button
                 type="button"
                 className="text-blue-600 hover:text-blue-800 hover:underline font-medium focus:outline-none"
-                onClick={() => {
-                  navigate("/signup");
-                }}
+                onClick={() => navigate("/signup")}
               >
                 Sign up here
               </button>
@@ -348,7 +394,6 @@ const Login = () => {
             </a>
           </p>
 
-          {/* Lumora Ventures Branding */}
           <div className="border-t border-gray-200 pt-4 mt-4">
             <p className="text-xs text-gray-400">
               Powered by{" "}
@@ -360,13 +405,17 @@ const Login = () => {
         </div>
       </div>
 
-      {/* Error Dialog */}
+      {/* Success/Error Dialog */}
       <FailDialog
         isOpen={showError}
         onClose={() => setShowError(false)}
-        title="Login Failed"
+        title={
+          errorMessage.includes("successful") ? "Success!" : "Login Failed"
+        }
         message={errorMessage}
-        buttonText="Try Again"
+        buttonText={
+          errorMessage.includes("successful") ? "Continue" : "Try Again"
+        }
         onRetry={() => setShowError(false)}
       />
     </div>
