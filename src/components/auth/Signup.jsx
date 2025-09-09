@@ -1,24 +1,22 @@
 import React, { useState } from "react";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import {
   collection,
-  query,
-  where,
-  getDocs,
   doc,
   getDoc,
   setDoc,
+  addDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
-import { auth, db } from "../../services/firebase";
+import { db } from "../../services/firebase";
 import InputField from "../ui/InputField";
 import Button from "../ui/Button";
 import FailDialog from "../ui/FailDialog";
-import SuccessDialog from "../ui/SuccessDialog";
+import { useUser } from "../../contexts/userContext";
 
 const Signup = () => {
+  const { loading: authLoading, setUser } = useUser();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -31,9 +29,7 @@ const Signup = () => {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [showError, setShowError] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
 
   const handleInputChange = (field) => (e) => {
@@ -116,91 +112,13 @@ const Signup = () => {
 
   const checkUsernameAvailability = async (username) => {
     try {
-      // Alternative method: Check if username exists in Firestore using query
-      const usernamesRef = collection(db, "usernames");
-      const q = query(usernamesRef, where("__name__", "==", username));
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.empty;
+      // Check if username exists in usernames collection
+      const usernameDocRef = doc(db, "usernames", username);
+      const usernameDoc = await getDoc(usernameDocRef);
+      return !usernameDoc.exists();
     } catch (error) {
       console.error("Error checking username availability:", error);
-      try {
-        // Fallback method: Direct document reference
-        const usernameDocRef = doc(db, "usernames", username);
-        const usernameDoc = await getDoc(usernameDocRef);
-        return !usernameDoc.exists();
-      } catch (fallbackError) {
-        console.error("Fallback method also failed:", fallbackError);
-        return false;
-      }
-    }
-  };
-
-  const registerUser = async (userData) => {
-    try {
-      // Create a temporary email using username for Firebase Auth
-      const tempEmail = `${userData.username}@lumoraos.local`;
-
-      // Create user with Firebase Authentication
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        tempEmail,
-        userData.password
-      );
-
-      const user = userCredential.user;
-
-      // Update the user's display name
-      await updateProfile(user, {
-        displayName: userData.fullName,
-      });
-
-      // Create user document in Firestore
-      await setDoc(doc(db, "users", user.uid), {
-        uid: user.uid,
-        fullName: userData.fullName,
-        username: userData.username,
-        phoneNumber: userData.phoneNumber || "",
-        email: tempEmail,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        isActive: true,
-      });
-
-      // Reserve the username
-      await setDoc(doc(db, "usernames", userData.username), {
-        uid: user.uid,
-        createdAt: serverTimestamp(),
-      });
-
-      return {
-        success: true,
-        user: {
-          uid: user.uid,
-          fullName: userData.fullName,
-          username: userData.username,
-        },
-      };
-    } catch (error) {
-      console.error("Registration error:", error);
-
-      let errorMessage = "An unexpected error occurred. Please try again.";
-
-      if (error.code === "auth/email-already-in-use") {
-        errorMessage = "This username is already taken. Please choose another.";
-      } else if (error.code === "auth/weak-password") {
-        errorMessage =
-          "Password is too weak. Please choose a stronger password.";
-      } else if (error.code === "auth/invalid-email") {
-        errorMessage = "Invalid username format. Please try again.";
-      } else if (error.code === "auth/network-request-failed") {
-        errorMessage =
-          "Network error. Please check your connection and try again.";
-      }
-
-      return {
-        success: false,
-        error: errorMessage,
-      };
+      return false;
     }
   };
 
@@ -224,48 +142,122 @@ const Signup = () => {
         return;
       }
 
-      // Register user with Firebase
-      const result = await registerUser({
+      // Hash the password before storing
+      // const hashedPassword = await hashPassword(formData.password);
+
+      // Create user document in Firestore users collection
+      const usersCollectionRef = collection(db, "users");
+      const userDocRef = await addDoc(usersCollectionRef, {
         fullName: formData.fullName,
         username: formData.username,
-        phoneNumber: formData.phoneNumber,
+        phoneNumber: formData.phoneNumber || "",
         password: formData.password,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        isActive: true,
+        lastLoginAt: null,
       });
 
-      if (result.success) {
-        console.log("Registration successful:", result.user);
-        setSuccessMessage(
-          "Account created successfully! You can now log in with your username and password."
-        );
-        setShowSuccess(true);
+      // The document ID is now the user ID
+      const userId = userDocRef.id;
 
-        // Clear form
-        setFormData({
-          fullName: "",
-          username: "",
-          phoneNumber: "",
-          password: "",
-          confirmPassword: "",
-        });
-        setAcceptTerms(false);
-      } else {
-        setErrorMessage(result.error);
-        setShowError(true);
-      }
+      // Update the user document with the userId field
+      await setDoc(userDocRef, {
+        userId: userId,
+        fullName: formData.fullName,
+        username: formData.username,
+        phoneNumber: formData.phoneNumber || "",
+        password: formData.password,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        isActive: true,
+        lastLoginAt: null,
+      });
+
+      // Reserve the username in usernames collection
+      await setDoc(doc(db, "usernames", formData.username), {
+        userId: userId,
+        createdAt: serverTimestamp(),
+      });
+
+      // Create user session data (without sensitive info)
+      const userData = {
+        userId: userId,
+        fullName: formData.fullName,
+        username: formData.username,
+        phoneNumber: formData.phoneNumber || "",
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      };
+
+      // Set user in context (auto-login)
+      setUser(userData);
+
+      // Store user session in localStorage for persistence
+      localStorage.setItem("lumoraUser", JSON.stringify(userData));
+      localStorage.setItem(
+        "lumoraSession",
+        JSON.stringify({
+          userId: userId,
+          username: formData.username,
+          loginTime: new Date().toISOString(),
+        })
+      );
+
+      // Clear form
+      setFormData({
+        fullName: "",
+        username: "",
+        phoneNumber: "",
+        password: "",
+        confirmPassword: "",
+      });
+      setAcceptTerms(false);
+
+      // Show success message briefly before redirect
+      setErrorMessage("Account created successfully! Welcome to LumoraOS.");
+      setShowError(true);
+
+      // Navigate to dashboard after a brief delay
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 1500);
     } catch (error) {
-      console.error("Unexpected registration error:", error);
-      setErrorMessage("An unexpected error occurred. Please try again.");
+      console.error("Registration error:", error);
+
+      let errorMsg = "An unexpected error occurred. Please try again.";
+
+      // Handle specific errors
+      if (error.message === "Failed to process password") {
+        errorMsg = "Password processing failed. Please try again.";
+      } else if (error.code === "permission-denied") {
+        errorMsg = "Permission denied. Please check your network connection.";
+      } else if (error.code === "unavailable") {
+        errorMsg = "Service temporarily unavailable. Please try again later.";
+      } else if (error.message.includes("network")) {
+        errorMsg = "Network error. Please check your connection and try again.";
+      }
+
+      setErrorMessage(errorMsg);
       setShowError(true);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSuccessClose = () => {
-    setShowSuccess(false);
-    // Redirect to login page after successful registration
-    // navigate("/login");
-  };
+  // Show loading while auth state is being determined
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-3 text-gray-600">Loading...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -445,7 +437,6 @@ const Signup = () => {
             By creating an account, you agree to our terms and privacy policy
           </p>
 
-          {/* Lumora Ventures Branding */}
           <div className="border-t border-gray-200 pt-4">
             <p className="text-xs text-gray-400">
               Powered by{" "}
@@ -457,22 +448,19 @@ const Signup = () => {
         </div>
       </div>
 
-      {/* Success Dialog */}
-      <SuccessDialog
-        isOpen={showSuccess}
-        onClose={handleSuccessClose}
-        title="Account Created Successfully!"
-        message={successMessage}
-        buttonText="Continue to Login"
-      />
-
-      {/* Error Dialog */}
+      {/* Success/Error Dialog */}
       <FailDialog
         isOpen={showError}
         onClose={() => setShowError(false)}
-        title="Registration Failed"
+        title={
+          errorMessage.includes("successfully")
+            ? "Success!"
+            : "Registration Failed"
+        }
         message={errorMessage}
-        buttonText="Try Again"
+        buttonText={
+          errorMessage.includes("successfully") ? "Continue" : "Try Again"
+        }
         onRetry={() => setShowError(false)}
       />
     </div>

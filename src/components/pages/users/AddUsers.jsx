@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import {
   doc,
   setDoc,
@@ -7,18 +6,19 @@ import {
   getDocs,
   addDoc,
   serverTimestamp,
-  query,
-  where,
+  getDoc,
 } from "firebase/firestore";
-import { auth, db } from "../../../services/firebase";
+import { db } from "../../../services/firebase";
 import { useUser } from "../../../contexts/userContext";
+import { useNavigate } from "react-router-dom";
 import InputField from "../../ui/InputField";
 import Button from "../../ui/Button";
 import SuccessDialog from "../../ui/SuccessDialog";
 import FailDialog from "../../ui/FailDialog";
 
 const AddUsers = () => {
-  const { user: currentUser } = useUser();
+  const { user: currentUser, loading: authLoading } = useUser();
+  const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
     // Basic Information
@@ -84,16 +84,53 @@ const AddUsers = () => {
   // Auto-generated password
   const [generatedPassword, setGeneratedPassword] = useState("");
 
-  // Generate secure password
-  const generatePassword = () => {
-    const length = 12;
-    const charset =
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
-    let password = "";
-    for (let i = 0; i < length; i++) {
-      password += charset.charAt(Math.floor(Math.random() * charset.length));
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!authLoading && !currentUser) {
+      navigate("/login");
     }
-    return password;
+  }, [authLoading, currentUser, navigate]);
+
+  // Generate simple, memorable password using name and username
+  const generatePassword = (
+    fullName = formData.fullName,
+    username = formData.username
+  ) => {
+    if (!fullName && !username) {
+      const words = ["Easy", "Safe", "Cool", "Good"];
+      const numbers = Math.floor(Math.random() * 99) + 1;
+      return `${words[Math.floor(Math.random() * words.length)]}${numbers}`;
+    }
+
+    const firstName = fullName
+      ? fullName
+          .trim()
+          .split(" ")[0]
+          .replace(/[^a-zA-Z]/g, "")
+      : "";
+    const cleanUsername = username ? username.replace(/[^a-zA-Z0-9]/g, "") : "";
+
+    let passwordBase = "";
+
+    if (firstName && cleanUsername) {
+      passwordBase =
+        firstName.charAt(0).toUpperCase() +
+        firstName.slice(1).toLowerCase() +
+        cleanUsername.toLowerCase();
+    } else if (firstName) {
+      passwordBase =
+        firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+    } else if (cleanUsername) {
+      passwordBase =
+        cleanUsername.charAt(0).toUpperCase() +
+        cleanUsername.slice(1).toLowerCase();
+    }
+
+    const currentYear = new Date().getFullYear();
+    const numbers = Math.floor(Math.random() * 99) + 1;
+    const suffix = Math.random() > 0.5 ? currentYear : numbers;
+
+    return passwordBase + suffix;
   };
 
   // Initialize generated password
@@ -101,11 +138,22 @@ const AddUsers = () => {
     setGeneratedPassword(generatePassword());
   }, []);
 
+  // Update password when name or username changes
+  useEffect(() => {
+    if (formData.fullName || formData.username) {
+      setGeneratedPassword(
+        generatePassword(formData.fullName, formData.username)
+      );
+    }
+  }, [formData.fullName, formData.username]);
+
   const regeneratePassword = () => {
-    setGeneratedPassword(generatePassword());
+    setGeneratedPassword(
+      generatePassword(formData.fullName, formData.username)
+    );
   };
 
-  // Check username availability
+  // Username availability check
   const checkUsernameAvailability = async (username) => {
     if (!username || username.length < 3) {
       setUsernameAvailable(null);
@@ -114,10 +162,9 @@ const AddUsers = () => {
 
     setUsernameChecking(true);
     try {
-      const usernameDoc = await getDocs(
-        query(collection(db, "usernames"), where("__name__", "==", username))
-      );
-      setUsernameAvailable(usernameDoc.empty);
+      const usernameDocRef = doc(db, "usernames", username.toLowerCase());
+      const usernameDoc = await getDoc(usernameDocRef);
+      setUsernameAvailable(!usernameDoc.exists());
     } catch (error) {
       console.error("Error checking username:", error);
       setUsernameAvailable(null);
@@ -139,12 +186,13 @@ const AddUsers = () => {
 
   // Load roles and departments on component mount
   useEffect(() => {
-    loadRolesAndDepartments();
-  }, []);
+    if (currentUser) {
+      loadRolesAndDepartments();
+    }
+  }, [currentUser]);
 
   const loadRolesAndDepartments = async () => {
     try {
-      // Load roles
       const rolesSnapshot = await getDocs(collection(db, "roles"));
       const rolesData = rolesSnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -152,7 +200,6 @@ const AddUsers = () => {
       }));
       setRoles(rolesData);
 
-      // Load departments
       const departmentsSnapshot = await getDocs(collection(db, "departments"));
       const departmentsData = departmentsSnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -167,7 +214,6 @@ const AddUsers = () => {
   const handleInputChange = (field) => (e) => {
     let value = e.target.value;
 
-    // Format specific fields
     if (field === "username") {
       value = value.toLowerCase().replace(/[^a-z0-9_]/g, "");
     } else if (field === "email") {
@@ -181,7 +227,6 @@ const AddUsers = () => {
       [field]: value,
     }));
 
-    // Clear error when user starts typing
     if (errors[field]) {
       setErrors((prev) => ({
         ...prev,
@@ -194,18 +239,38 @@ const AddUsers = () => {
     if (!newRole.trim()) return;
 
     try {
-      await addDoc(collection(db, "roles"), {
+      const roleData = {
         name: newRole.trim(),
         createdAt: serverTimestamp(),
-        createdBy: currentUser?.uid,
-      });
+      };
 
+      // Add createdBy only if currentUser has userId
+      if (currentUser?.userId) {
+        roleData.createdBy = currentUser.userId;
+      }
+
+      const docRef = await addDoc(collection(db, "roles"), roleData);
+
+      const newRoleData = {
+        id: docRef.id,
+        name: newRole.trim(),
+        createdAt: new Date(),
+      };
+
+      // Add createdBy only if currentUser has userId
+      if (currentUser?.userId) {
+        newRoleData.createdBy = currentUser.userId;
+      }
+
+      setRoles((prev) => [...prev, newRoleData]);
+
+      setFormData((prev) => ({ ...prev, role: newRole.trim() }));
       setNewRole("");
       setShowNewRoleInput(false);
-      await loadRolesAndDepartments();
-      setFormData((prev) => ({ ...prev, role: newRole.trim() }));
     } catch (error) {
       console.error("Error adding new role:", error);
+      setErrorMessage("Failed to add new role. Please try again.");
+      setShowError(true);
     }
   };
 
@@ -213,18 +278,44 @@ const AddUsers = () => {
     if (!newDepartment.trim()) return;
 
     try {
-      await addDoc(collection(db, "departments"), {
+      const departmentData = {
         name: newDepartment.trim(),
         createdAt: serverTimestamp(),
-        createdBy: currentUser?.uid,
-      });
+      };
 
+      // Add createdBy only if currentUser has userId
+      if (currentUser?.userId) {
+        departmentData.createdBy = currentUser.userId;
+      }
+
+      console.log("Creating department with data:", departmentData);
+      console.log("Current user:", currentUser);
+
+      const docRef = await addDoc(
+        collection(db, "departments"),
+        departmentData
+      );
+
+      const newDepartmentData = {
+        id: docRef.id,
+        name: newDepartment.trim(),
+        createdAt: new Date(),
+      };
+
+      // Add createdBy only if currentUser has userId
+      if (currentUser?.userId) {
+        newDepartmentData.createdBy = currentUser.userId;
+      }
+
+      setDepartments((prev) => [...prev, newDepartmentData]);
+
+      setFormData((prev) => ({ ...prev, department: newDepartment.trim() }));
       setNewDepartment("");
       setShowNewDepartmentInput(false);
-      await loadRolesAndDepartments();
-      setFormData((prev) => ({ ...prev, department: newDepartment.trim() }));
     } catch (error) {
       console.error("Error adding new department:", error);
+      setErrorMessage("Failed to add new department. Please try again.");
+      setShowError(true);
     }
   };
 
@@ -234,22 +325,30 @@ const AddUsers = () => {
     // Required fields validation
     if (!formData.fullName.trim()) newErrors.fullName = "Full name is required";
     if (!formData.username.trim()) newErrors.username = "Username is required";
-    if (!formData.email.trim()) newErrors.email = "Email is required";
     if (!formData.role.trim()) newErrors.role = "Role is required";
     if (!formData.department.trim())
       newErrors.department = "Department is required";
-    // if (!formData.employeeId.trim())
-    //   newErrors.employeeId = "Employee ID is required";
 
-    // Username availability check
-    if (formData.username && usernameAvailable === false) {
-      newErrors.username = "Username is already taken";
+    // Username validation
+    if (formData.username) {
+      if (formData.username.length < 3) {
+        newErrors.username = "Username must be at least 3 characters";
+      } else if (formData.username.length > 20) {
+        newErrors.username = "Username must be less than 20 characters";
+      } else if (!/^[a-z0-9_]+$/.test(formData.username)) {
+        newErrors.username =
+          "Username can only contain lowercase letters, numbers, and underscores";
+      } else if (usernameAvailable === false) {
+        newErrors.username = "Username is already taken";
+      }
     }
 
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (formData.email && !emailRegex.test(formData.email)) {
-      newErrors.email = "Please enter a valid email address";
+    // Email validation (only if provided)
+    if (formData.email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        newErrors.email = "Please enter a valid email address";
+      }
     }
 
     // Phone number validation
@@ -269,13 +368,34 @@ const AddUsers = () => {
     return `${prefix}${randomNum}`;
   };
 
+  const cleanData = (obj) => {
+    const cleaned = {};
+    Object.keys(obj).forEach((key) => {
+      if (obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
+        if (
+          typeof obj[key] === "object" &&
+          !Array.isArray(obj[key]) &&
+          obj[key].constructor === Object
+        ) {
+          const cleanedNested = cleanData(obj[key]);
+          if (Object.keys(cleanedNested).length > 0) {
+            cleaned[key] = cleanedNested;
+          }
+        } else {
+          cleaned[key] = obj[key];
+        }
+      }
+    });
+    return cleaned;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!validateForm()) return;
 
-    // Check if current user is authenticated
-    if (!currentUser?.uid) {
+    // Fixed: Check for userId instead of uid
+    if (!currentUser?.userId) {
       setErrorMessage(
         "You must be logged in to create users. Please refresh and try again."
       );
@@ -286,50 +406,23 @@ const AddUsers = () => {
     setLoading(true);
 
     try {
-      // Create user with Firebase Authentication
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        formData.email,
-        generatedPassword // Use generated password instead of storing user input
-      );
+      // Create a new document reference to get the auto-generated ID
+      const userDocRef = doc(collection(db, "users"));
+      const userId = userDocRef.id; // This is our user ID
 
-      const newUser = userCredential.user;
-
-      // Update display name
-      await updateProfile(newUser, {
-        displayName: formData.fullName,
-      });
-
-      // Prepare user data for Firestore (don't store password)
-      // Filter out undefined values to prevent Firestore errors
-      const cleanData = (obj) => {
-        const cleaned = {};
-        Object.keys(obj).forEach((key) => {
-          if (obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
-            if (
-              typeof obj[key] === "object" &&
-              !Array.isArray(obj[key]) &&
-              obj[key].constructor === Object
-            ) {
-              const cleanedNested = cleanData(obj[key]);
-              if (Object.keys(cleanedNested).length > 0) {
-                cleaned[key] = cleanedNested;
-              }
-            } else {
-              cleaned[key] = obj[key];
-            }
-          }
-        });
-        return cleaned;
-      };
-
+      // Prepare user data with the document ID as userId
       const userData = cleanData({
+        // System fields - using document ID as user ID
+        userId: userId,
+
         // Basic Info
-        uid: newUser.uid,
         fullName: formData.fullName,
         username: formData.username,
         email: formData.email,
         phoneNumber: formData.phoneNumber,
+
+        // Authentication - store password securely in production
+        password: generatedPassword, // In production, hash this password
 
         // Role and Department
         role: formData.role,
@@ -379,38 +472,37 @@ const AddUsers = () => {
           notes: formData.notes,
         },
 
-        // System fields
+        // System fields - Fixed: Use userId instead of uid
         isActive: true,
         createdAt: serverTimestamp(),
-        createdBy: currentUser.uid, // Remove optional chaining since we verified it exists
+        createdBy: currentUser.userId,
         updatedAt: serverTimestamp(),
       });
 
-      // Save to Firestore
-      await setDoc(doc(db, "users", newUser.uid), userData);
+      // Save user data to Firestore using the generated document ID
+      await setDoc(userDocRef, userData);
 
       // Reserve username
-      await setDoc(doc(db, "usernames", formData.username), {
-        uid: newUser.uid,
+      await setDoc(doc(db, "usernames", formData.username.toLowerCase()), {
+        userId: userId,
         createdAt: serverTimestamp(),
       });
 
-      // Log activity (only if we have required data)
+      // Log activity
       try {
         await addDoc(collection(db, "activities"), {
           type: "user_created",
           description: `New user ${formData.fullName} (${formData.username}) was created`,
-          performedBy: currentUser.uid,
-          targetUserId: newUser.uid,
+          performedBy: currentUser.userId, // Fixed: Use userId instead of uid
+          targetUserId: userId,
           timestamp: serverTimestamp(),
         });
       } catch (activityError) {
-        // Log activity error but don't fail the main operation
         console.warn("Failed to log activity:", activityError);
       }
 
       setSuccessMessage(
-        `User ${formData.fullName} has been successfully created with password: ${generatedPassword}`
+        `User ${formData.fullName} has been successfully created with ID: ${userId}. Password: ${generatedPassword} - Please share this with the employee.`
       );
       setShowSuccess(true);
 
@@ -452,18 +544,15 @@ const AddUsers = () => {
     } catch (error) {
       console.error("Error creating user:", error);
 
-      // Provide more specific error messages
       let errorMsg = "Failed to create user. Please try again.";
 
-      if (error.code === "auth/email-already-in-use") {
+      if (error.code === "permission-denied") {
+        errorMsg = "You don't have permission to create users.";
+      } else if (error.code === "network-request-failed") {
+        errorMsg = "Network error. Please check your connection and try again.";
+      } else {
         errorMsg =
-          "This email is already registered. Please use a different email.";
-      } else if (error.code === "auth/weak-password") {
-        errorMsg = "Password is too weak. Please generate a stronger password.";
-      } else if (error.code === "auth/invalid-email") {
-        errorMsg = "Please enter a valid email address.";
-      } else if (error.message) {
-        errorMsg = error.message;
+          error.message || "An unexpected error occurred. Please try again.";
       }
 
       setErrorMessage(errorMsg);
@@ -472,6 +561,25 @@ const AddUsers = () => {
       setLoading(false);
     }
   };
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-3 text-gray-600">Loading...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if user is not authenticated
+  if (!currentUser) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -559,11 +667,10 @@ const AddUsers = () => {
                 <InputField
                   label="Email"
                   type="email"
-                  placeholder="Enter email address"
+                  placeholder="Enter email address (optional)"
                   value={formData.email}
                   onChange={handleInputChange("email")}
                   error={errors.email}
-                  required
                 />
                 <InputField
                   label="Phone Number"
@@ -586,7 +693,7 @@ const AddUsers = () => {
                       {generatedPassword}
                     </p>
                     <p className="text-xs text-blue-600 mt-1">
-                      This password will be shared with the employee
+                      Password based on employee's name - easy to remember!
                     </p>
                   </div>
                   <Button
@@ -619,7 +726,11 @@ const AddUsers = () => {
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       required
                     >
-                      <option value="">Select a role</option>
+                      <option value="">
+                        {roles.length > 0
+                          ? "Select a role"
+                          : "No roles available - create one below"}
+                      </option>
                       <option value="HR">HR</option>
                       <option value="Accountant">Accountant</option>
                       <option value="Employee">Employee</option>
@@ -636,6 +747,7 @@ const AddUsers = () => {
                       variant="outline"
                       size="sm"
                       onClick={() => setShowNewRoleInput(!showNewRoleInput)}
+                      title="Add new role"
                     >
                       +
                     </Button>
@@ -648,9 +760,31 @@ const AddUsers = () => {
                         value={newRole}
                         onChange={(e) => setNewRole(e.target.value)}
                         className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onKeyPress={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addNewRole();
+                          }
+                        }}
                       />
-                      <Button type="button" size="sm" onClick={addNewRole}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={addNewRole}
+                        disabled={!newRole.trim()}
+                      >
                         Add
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setNewRole("");
+                          setShowNewRoleInput(false);
+                        }}
+                      >
+                        Cancel
                       </Button>
                     </div>
                   )}
@@ -671,20 +805,22 @@ const AddUsers = () => {
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       required
                     >
-                      <option value="">Select a department</option>
+                      <option value="">
+                        {departments.length > 0
+                          ? "Select a department"
+                          : "No departments available - create one below"}
+                      </option>
                       <option value="Human Resources">Human Resources</option>
                       <option value="Finance">Finance</option>
                       <option value="IT">IT</option>
                       <option value="Sales">Sales</option>
                       <option value="Marketing">Marketing</option>
                       <option value="Operations">Operations</option>
-                      {departments
-                        .filter((dept) => dept.isActive !== false)
-                        .map((dept) => (
-                          <option key={dept.id} value={dept.name}>
-                            {dept.name}
-                          </option>
-                        ))}
+                      {departments.map((dept) => (
+                        <option key={dept.id} value={dept.name}>
+                          {dept.name}
+                        </option>
+                      ))}
                     </select>
                     <Button
                       type="button"
@@ -693,6 +829,7 @@ const AddUsers = () => {
                       onClick={() =>
                         setShowNewDepartmentInput(!showNewDepartmentInput)
                       }
+                      title="Add new department"
                     >
                       +
                     </Button>
@@ -705,13 +842,31 @@ const AddUsers = () => {
                         value={newDepartment}
                         onChange={(e) => setNewDepartment(e.target.value)}
                         className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onKeyPress={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addNewDepartment();
+                          }
+                        }}
                       />
                       <Button
                         type="button"
                         size="sm"
                         onClick={addNewDepartment}
+                        disabled={!newDepartment.trim()}
                       >
                         Add
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setNewDepartment("");
+                          setShowNewDepartmentInput(false);
+                        }}
+                      >
+                        Cancel
                       </Button>
                     </div>
                   )}
