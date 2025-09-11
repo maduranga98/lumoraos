@@ -9,7 +9,6 @@ import {
   serverTimestamp,
   query,
   orderBy,
-  where,
 } from "firebase/firestore";
 import { db } from "../../../services/firebase";
 import { useUser } from "../../../contexts/userContext";
