@@ -10,7 +10,14 @@ import AddVehicles from "./components/pages/logistics/AddVehicles";
 import ExpensesLog from "./components/pages/logistics/ExpensesLog";
 import ServicesAndRepairs from "./components/pages/logistics/ServicesAndReparis";
 import AddingSuppliers from "./components/pages/purchasingnsuppliers/AddingSuppliers";
-import Material from "./components/pages/purchasingnsuppliers/Material";
+import MaterialIssue from "./components/pages/stocks/material_stock/MaterialIssue";
+import ProductDefinition from "./components/pages/stocks/production_stock/ProductDefinition";
+import ProductionEntry from "./components/pages/stocks/production_stock/ProductionStock";
+import AddingRoutes from "./components/pages/sales/RoutesPlanner/AddingRoutes";
+import AssignRoutes from "./components/pages/sales/RoutesPlanner/AssignRoutes";
+import RoutesPlanning from "./components/pages/sales/RoutesPlanner/RoutesPlaner";
+import AddingOutlets from "./components/pages/sales/Outlets/AddingOutlets";
+import OutletsStock from "./components/pages/sales/Outlets/OutletsStock";
 
 const App = () => {
   return (
@@ -24,7 +31,15 @@ const App = () => {
       <Route path="/expenses" element={<ExpensesLog />} />
       <Route path="/services-repairs" element={<ServicesAndRepairs />} />
       <Route path="/adding-suppliers" element={<AddingSuppliers />} />
-      <Route path="/materials" element={<Material />} />
+      <Route path="/materials" element={<MaterialIssue />} />
+      <Route path="/material-issue" element={<MaterialIssue />} />
+      <Route path="/product-definition" element={<ProductDefinition />} />
+      <Route path="/production-entry" element={<ProductionEntry />} />
+      <Route path="/route-defining" element={<AddingRoutes />} />
+      <Route path="/route-assiging" element={<AssignRoutes />} />
+      <Route path="/route-planing" element={<RoutesPlanning />} />
+      <Route path="/outlets-adding" element={<AddingOutlets />} />
+      <Route path="/outlets-stock" element={<OutletsStock />} />
     </Routes>
   );
 };
