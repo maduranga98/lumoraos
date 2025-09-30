@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   query,
   orderBy,
+  getDoc,
 } from "firebase/firestore";
 import { db } from "../../../services/firebase";
 import { useUser } from "../../../contexts/userContext";
@@ -18,24 +19,24 @@ import Button from "../../ui/Button";
 import SuccessDialog from "../../ui/SuccessDialog";
 import FailDialog from "../../ui/FailDialog";
 
-const AddingSuppliers = ({ editSupplier = null }) => {
+const RawMaterials = ({ editMaterial = null }) => {
   const { user: currentUser, loading: authLoading } = useUser();
   const navigate = useNavigate();
-  const isEditMode = !!editSupplier;
+  const isEditMode = !!editMaterial;
 
   // Form state
   const [formData, setFormData] = useState({
     name: "",
-    contact: "",
-    address: "",
-    email: "",
-    phone: "",
-    paymentTerms: "cash",
+    unit: "kg",
+    currentStock: "",
+    reorderLevel: "",
+    lastSupplier: "",
   });
 
   // Component state
+  const [materials, setMaterials] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
-  const [filteredSuppliers, setFilteredSuppliers] = useState([]);
+  const [filteredMaterials, setFilteredMaterials] = useState([]);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -46,16 +47,18 @@ const AddingSuppliers = ({ editSupplier = null }) => {
   // View state
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [filterPayment, setFilterPayment] = useState("all");
-  const [selectedSupplier, setSelectedSupplier] = useState(null);
+  const [filterUnit, setFilterUnit] = useState("all");
+  const [filterStock, setFilterStock] = useState("all");
+  const [selectedMaterial, setSelectedMaterial] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
-  const paymentTermsOptions = [
-    { value: "cash", label: "Cash" },
-    { value: "credit 30 days", label: "Credit 30 Days" },
-    { value: "credit 60 days", label: "Credit 60 Days" },
-    { value: "credit 90 days", label: "Credit 90 Days" },
+  const unitOptions = [
+    { value: "kg", label: "Kilograms (kg)" },
+    { value: "liters", label: "Liters" },
+    { value: "grams", label: "Grams (g)" },
+    { value: "ml", label: "Milliliters (ml)" },
+    { value: "units", label: "Units" },
+    { value: "packets", label: "Packets" },
   ];
 
   // Redirect if not authenticated
@@ -65,87 +68,99 @@ const AddingSuppliers = ({ editSupplier = null }) => {
     }
   }, [authLoading, currentUser, navigate]);
 
-  // Load suppliers
+  // Load materials and suppliers
   useEffect(() => {
     if (currentUser) {
+      loadMaterials();
       loadSuppliers();
     }
   }, [currentUser]);
 
   // Pre-populate form when editing
   useEffect(() => {
-    if (editSupplier) {
+    if (editMaterial) {
       setFormData({
-        name: editSupplier.name || "",
-        contact: editSupplier.contact || "",
-        address: editSupplier.address || "",
-        email: editSupplier.email || "",
-        phone: editSupplier.phone || "",
-        paymentTerms: editSupplier.paymentTerms || "cash",
+        name: editMaterial.name || "",
+        unit: editMaterial.unit || "kg",
+        currentStock: editMaterial.currentStock?.toString() || "",
+        reorderLevel: editMaterial.reorderLevel?.toString() || "",
+        lastSupplier: editMaterial.lastSupplier || "",
       });
       setShowForm(true);
     }
-  }, [editSupplier]);
+  }, [editMaterial]);
 
-  // Filter suppliers
+  // Filter materials
   useEffect(() => {
-    let filtered = suppliers;
+    let filtered = materials;
 
-    // Apply search filter
     if (searchTerm) {
       filtered = filtered.filter(
-        (supplier) =>
-          supplier.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          supplier.contact?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          supplier.phone?.includes(searchTerm) ||
-          supplier.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          supplier.supplierId?.toLowerCase().includes(searchTerm.toLowerCase())
+        (material) =>
+          material.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          material.materialId?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
-    // Apply status filter
-    if (filterStatus !== "all") {
-      filtered = filtered.filter(
-        (supplier) => supplier.status === filterStatus
-      );
+    if (filterUnit !== "all") {
+      filtered = filtered.filter((material) => material.unit === filterUnit);
     }
 
-    // Apply payment terms filter
-    if (filterPayment !== "all") {
-      filtered = filtered.filter(
-        (supplier) => supplier.paymentTerms === filterPayment
-      );
+    if (filterStock !== "all") {
+      filtered = filtered.filter((material) => {
+        if (filterStock === "low") {
+          return material.currentStock <= material.reorderLevel;
+        } else if (filterStock === "adequate") {
+          return material.currentStock > material.reorderLevel;
+        }
+        return true;
+      });
     }
 
-    setFilteredSuppliers(filtered);
-  }, [suppliers, searchTerm, filterStatus, filterPayment]);
+    setFilteredMaterials(filtered);
+  }, [materials, searchTerm, filterUnit, filterStock]);
+
+  const loadMaterials = async () => {
+    try {
+      const materialsQuery = query(
+        collection(db, "raw_materials"),
+        orderBy("createdAt", "desc")
+      );
+      const materialsSnapshot = await getDocs(materialsQuery);
+      const materialsData = materialsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setMaterials(materialsData);
+    } catch (error) {
+      console.error("Error loading materials:", error);
+      setErrorMessage("Failed to load materials. Please try again.");
+      setShowError(true);
+    }
+  };
 
   const loadSuppliers = async () => {
     try {
       const suppliersQuery = query(
         collection(db, "suppliers"),
-        orderBy("createdAt", "desc")
+        orderBy("name")
       );
       const suppliersSnapshot = await getDocs(suppliersQuery);
       const suppliersData = suppliersSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
-      setSuppliers(suppliersData);
+      setSuppliers(suppliersData.filter((s) => s.status === "active"));
     } catch (error) {
       console.error("Error loading suppliers:", error);
-      setErrorMessage("Failed to load suppliers. Please try again.");
-      setShowError(true);
     }
   };
 
   const handleInputChange = (field) => (e) => {
     let value = e.target.value;
 
-    if (field === "phone") {
-      value = value.replace(/[^0-9+\s-()]/g, "");
-    } else if (field === "email") {
-      value = value.toLowerCase();
+    if (field === "currentStock" || field === "reorderLevel") {
+      value = value.replace(/[^0-9.]/g, "");
     }
 
     setFormData((prev) => ({
@@ -164,46 +179,38 @@ const AddingSuppliers = ({ editSupplier = null }) => {
   const validateForm = () => {
     const newErrors = {};
 
-    // Required fields
-    if (!formData.name.trim()) newErrors.name = "Supplier name is required";
-    if (!formData.contact.trim())
-      newErrors.contact = "Contact person is required";
-    if (!formData.phone.trim()) newErrors.phone = "Phone number is required";
+    if (!formData.name.trim()) newErrors.name = "Material name is required";
+    if (!formData.unit) newErrors.unit = "Unit is required";
+    if (!formData.currentStock.trim())
+      newErrors.currentStock = "Current stock is required";
+    if (!formData.reorderLevel.trim())
+      newErrors.reorderLevel = "Reorder level is required";
 
-    // Email validation (optional but must be valid if provided)
-    if (formData.email) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email)) {
-        newErrors.email = "Please enter a valid email address";
-      }
+    if (
+      formData.currentStock &&
+      (isNaN(formData.currentStock) || parseFloat(formData.currentStock) < 0)
+    ) {
+      newErrors.currentStock = "Please enter a valid stock quantity";
     }
 
-    // Phone number validation
-    if (formData.phone && !/^\+?[\d\s-()]+$/.test(formData.phone)) {
-      newErrors.phone = "Please enter a valid phone number";
+    if (
+      formData.reorderLevel &&
+      (isNaN(formData.reorderLevel) || parseFloat(formData.reorderLevel) < 0)
+    ) {
+      newErrors.reorderLevel = "Please enter a valid reorder level";
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const generateSupplierId = () => {
-    const prefix = "SUP";
+  const generateMaterialId = () => {
+    const prefix = "MAT";
     const timestamp = Date.now().toString().slice(-6);
     const random = Math.floor(Math.random() * 100)
       .toString()
       .padStart(2, "0");
     return `${prefix}${timestamp}${random}`;
-  };
-
-  const cleanData = (obj) => {
-    const cleaned = {};
-    Object.keys(obj).forEach((key) => {
-      if (obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
-        cleaned[key] = obj[key];
-      }
-    });
-    return cleaned;
   };
 
   const handleSubmit = async (e) => {
@@ -213,7 +220,7 @@ const AddingSuppliers = ({ editSupplier = null }) => {
 
     if (!currentUser?.userId) {
       setErrorMessage(
-        "You must be logged in to manage suppliers. Please refresh and try again."
+        "You must be logged in to manage materials. Please refresh and try again."
       );
       setShowError(true);
       return;
@@ -222,50 +229,46 @@ const AddingSuppliers = ({ editSupplier = null }) => {
     setLoading(true);
 
     try {
-      let supplierId;
-      let supplierDocRef;
+      let materialId;
+      let materialDocRef;
 
       if (isEditMode) {
-        supplierId = editSupplier.supplierId || editSupplier.id;
-        supplierDocRef = doc(db, "suppliers", supplierId);
+        materialId = editMaterial.materialId || editMaterial.id;
+        materialDocRef = doc(db, "raw_materials", materialId);
       } else {
-        supplierDocRef = doc(collection(db, "suppliers"));
-        supplierId = generateSupplierId();
+        materialDocRef = doc(collection(db, "raw_materials"));
+        materialId = generateMaterialId();
       }
 
-      const supplierData = cleanData({
-        supplierId: supplierId,
+      const materialData = {
+        materialId: materialId,
         name: formData.name.trim(),
-        contact: formData.contact.trim(),
-        address: formData.address.trim(),
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
-        paymentTerms: formData.paymentTerms,
-        status: isEditMode ? editSupplier.status : "active",
-
-        // System fields
+        unit: formData.unit,
+        currentStock: parseFloat(formData.currentStock),
+        reorderLevel: parseFloat(formData.reorderLevel),
+        lastSupplier: formData.lastSupplier || null,
         ...(isEditMode
           ? {}
           : { createdAt: serverTimestamp(), createdBy: currentUser.userId }),
         updatedAt: serverTimestamp(),
         ...(isEditMode ? { updatedBy: currentUser.userId } : {}),
-      });
+      };
 
       if (isEditMode) {
-        await updateDoc(supplierDocRef, supplierData);
+        await updateDoc(materialDocRef, materialData);
       } else {
-        await setDoc(supplierDocRef, supplierData);
+        await setDoc(materialDocRef, materialData);
       }
 
       // Log activity
       try {
         await addDoc(collection(db, "activities"), {
-          type: isEditMode ? "supplier_updated" : "supplier_added",
+          type: isEditMode ? "material_updated" : "material_added",
           description: isEditMode
-            ? `Supplier ${formData.name} was updated`
-            : `New supplier ${formData.name} was added`,
+            ? `Material ${formData.name} was updated`
+            : `New material ${formData.name} was added`,
           performedBy: currentUser.userId,
-          targetSupplierId: supplierId,
+          targetMaterialId: materialId,
           timestamp: serverTimestamp(),
         });
       } catch (activityError) {
@@ -274,20 +277,18 @@ const AddingSuppliers = ({ editSupplier = null }) => {
 
       setSuccessMessage(
         isEditMode
-          ? `Supplier ${formData.name} has been successfully updated!`
-          : `Supplier ${formData.name} has been successfully registered with ID: ${supplierId}`
+          ? `Material ${formData.name} has been successfully updated!`
+          : `Material ${formData.name} has been successfully added with ID: ${materialId}`
       );
       setShowSuccess(true);
 
-      // Reset form and reload suppliers
       if (!isEditMode) {
         setFormData({
           name: "",
-          contact: "",
-          address: "",
-          email: "",
-          phone: "",
-          paymentTerms: "cash",
+          unit: "kg",
+          currentStock: "",
+          reorderLevel: "",
+          lastSupplier: "",
         });
       } else {
         setTimeout(() => {
@@ -295,18 +296,18 @@ const AddingSuppliers = ({ editSupplier = null }) => {
         }, 1500);
       }
 
-      await loadSuppliers();
+      await loadMaterials();
     } catch (error) {
-      console.error("Error managing supplier:", error);
+      console.error("Error managing material:", error);
 
       let errorMsg = `Failed to ${
-        isEditMode ? "update" : "register"
-      } supplier. Please try again.`;
+        isEditMode ? "update" : "add"
+      } material. Please try again.`;
 
       if (error.code === "permission-denied") {
         errorMsg = `You don't have permission to ${
           isEditMode ? "update" : "add"
-        } suppliers.`;
+        } materials.`;
       } else if (error.code === "network-request-failed") {
         errorMsg = "Network error. Please check your connection and try again.";
       }
@@ -318,39 +319,30 @@ const AddingSuppliers = ({ editSupplier = null }) => {
     }
   };
 
-  const toggleSupplierStatus = async (supplier) => {
-    const newStatus = supplier.status === "active" ? "inactive" : "active";
-
-    try {
-      const supplierRef = doc(db, "suppliers", supplier.id);
-      await updateDoc(supplierRef, {
-        status: newStatus,
-        updatedAt: serverTimestamp(),
-        updatedBy: currentUser.userId,
-      });
-
-      // Update local state
-      const updatedSuppliers = suppliers.map((s) =>
-        s.id === supplier.id ? { ...s, status: newStatus } : s
-      );
-      setSuppliers(updatedSuppliers);
-
-      setSuccessMessage(
-        `Supplier ${
-          newStatus === "active" ? "activated" : "deactivated"
-        } successfully!`
-      );
-      setShowSuccess(true);
-    } catch (error) {
-      console.error("Error updating supplier status:", error);
-      setErrorMessage("Failed to update supplier status. Please try again.");
-      setShowError(true);
-    }
+  const handleViewMaterial = (material) => {
+    setSelectedMaterial(material);
+    setShowModal(true);
   };
 
-  const handleViewSupplier = (supplier) => {
-    setSelectedSupplier(supplier);
-    setShowModal(true);
+  const getSupplierName = (supplierId) => {
+    if (!supplierId) return "N/A";
+    const supplier = suppliers.find((s) => s.id === supplierId);
+    return supplier?.name || "Unknown Supplier";
+  };
+
+  const getStockStatus = (material) => {
+    if (material.currentStock <= material.reorderLevel) {
+      return {
+        label: "Low Stock",
+        color: "bg-red-100 text-red-700",
+        dotColor: "bg-red-500",
+      };
+    }
+    return {
+      label: "Adequate",
+      color: "bg-green-100 text-green-700",
+      dotColor: "bg-green-500",
+    };
   };
 
   const formatDate = (timestamp) => {
@@ -363,7 +355,6 @@ const AddingSuppliers = ({ editSupplier = null }) => {
     });
   };
 
-  // Show loading while checking auth
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
@@ -410,10 +401,10 @@ const AddingSuppliers = ({ editSupplier = null }) => {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                Supplier Management
+                Raw Materials Inventory
               </h1>
               <p className="text-gray-600">
-                Manage and track all your suppliers
+                Manage stock levels and track materials
               </p>
             </div>
             <div className="mt-4 sm:mt-0">
@@ -433,7 +424,7 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                         d="M4 6h16M4 12h16M4 18h16"
                       />
                     </svg>
-                    View Suppliers
+                    View Materials
                   </>
                 ) : (
                   <>
@@ -450,7 +441,7 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                         d="M12 4v16m8-8H4"
                       />
                     </svg>
-                    Add Supplier
+                    Add Material
                   </>
                 )}
               </Button>
@@ -461,45 +452,48 @@ const AddingSuppliers = ({ editSupplier = null }) => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
               <div className="text-2xl font-bold text-blue-700">
-                {suppliers.length}
+                {materials.length}
               </div>
               <div className="text-sm text-blue-600 font-medium">
-                Total Suppliers
+                Total Materials
               </div>
             </div>
-            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
-              <div className="text-2xl font-bold text-green-700">
-                {suppliers.filter((s) => s.status === "active").length}
-              </div>
-              <div className="text-sm text-green-600 font-medium">Active</div>
-            </div>
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
-              <div className="text-2xl font-bold text-purple-700">
-                {suppliers.filter((s) => s.paymentTerms === "cash").length}
-              </div>
-              <div className="text-sm text-purple-600 font-medium">
-                Cash Payment
-              </div>
-            </div>
-            <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4 border border-orange-200">
-              <div className="text-2xl font-bold text-orange-700">
+            <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-4 border border-red-200">
+              <div className="text-2xl font-bold text-red-700">
                 {
-                  suppliers.filter((s) => s.paymentTerms?.includes("credit"))
+                  materials.filter((m) => m.currentStock <= m.reorderLevel)
                     .length
                 }
               </div>
-              <div className="text-sm text-orange-600 font-medium">
-                Credit Terms
+              <div className="text-sm text-red-600 font-medium">Low Stock</div>
+            </div>
+            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
+              <div className="text-2xl font-bold text-green-700">
+                {
+                  materials.filter((m) => m.currentStock > m.reorderLevel)
+                    .length
+                }
+              </div>
+              <div className="text-sm text-green-600 font-medium">
+                Adequate Stock
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
+              <div className="text-2xl font-bold text-purple-700">
+                {suppliers.length}
+              </div>
+              <div className="text-sm text-purple-600 font-medium">
+                Active Suppliers
               </div>
             </div>
           </div>
         </div>
 
         {showForm ? (
-          /* Add/Edit Supplier Form */
+          /* Add/Edit Material Form */
           <div className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
             <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <svg
                   className="w-8 h-8 text-white"
                   fill="none"
@@ -510,93 +504,22 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m0 0h2M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                    d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
                   />
                 </svg>
               </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                {isEditMode ? "Edit Supplier" : "Add New Supplier"}
+                {isEditMode ? "Edit Material" : "Add New Material"}
               </h2>
               <p className="text-gray-600">
                 {isEditMode
-                  ? "Update supplier information"
-                  : "Register a new supplier"}
+                  ? "Update material information"
+                  : "Add a new raw material to inventory"}
               </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Basic Information */}
-              <div className="border border-gray-200 rounded-xl p-6 bg-gray-50">
-                <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
-                  <span className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
-                    <svg
-                      className="w-5 h-5 text-purple-600"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                  </span>
-                  Basic Information
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <InputField
-                    label="Supplier Name"
-                    type="text"
-                    placeholder="Enter supplier/company name"
-                    value={formData.name}
-                    onChange={handleInputChange("name")}
-                    error={errors.name}
-                    required
-                  />
-
-                  <InputField
-                    label="Contact Person"
-                    type="text"
-                    placeholder="Enter contact person name"
-                    value={formData.contact}
-                    onChange={handleInputChange("contact")}
-                    error={errors.contact}
-                  />
-
-                  <InputField
-                    label="Phone Number"
-                    type="tel"
-                    placeholder="Enter phone number"
-                    value={formData.phone}
-                    onChange={handleInputChange("phone")}
-                    error={errors.phone}
-                    required
-                  />
-
-                  <InputField
-                    label="Email Address"
-                    type="email"
-                    placeholder="Enter email (optional)"
-                    value={formData.email}
-                    onChange={handleInputChange("email")}
-                    error={errors.email}
-                  />
-
-                  <div className="md:col-span-2">
-                    <InputField
-                      label="Address"
-                      type="text"
-                      placeholder="Enter supplier address"
-                      value={formData.address}
-                      onChange={handleInputChange("address")}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Payment Terms */}
+              {/* Material Information */}
               <div className="border border-gray-200 rounded-xl p-6 bg-gray-50">
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
                   <span className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
@@ -610,30 +533,132 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
                       />
                     </svg>
                   </span>
-                  Payment Terms
+                  Material Information
                 </h3>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Payment Terms <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.paymentTerms}
-                    onChange={handleInputChange("paymentTerms")}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <InputField
+                    label="Material Name"
+                    type="text"
+                    placeholder="Enter material name (e.g., Milk, Sugar)"
+                    value={formData.name}
+                    onChange={handleInputChange("name")}
+                    error={errors.name}
                     required
-                  >
-                    {paymentTermsOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Unit of Measurement{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={formData.unit}
+                      onChange={handleInputChange("unit")}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      required
+                    >
+                      {unitOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.unit && (
+                      <p className="text-sm text-red-600 mt-1">{errors.unit}</p>
+                    )}
+                  </div>
+
+                  <InputField
+                    label="Current Stock"
+                    type="number"
+                    placeholder="Enter current stock quantity"
+                    value={formData.currentStock}
+                    onChange={handleInputChange("currentStock")}
+                    error={errors.currentStock}
+                    required
+                    step="0.01"
+                  />
+
+                  <InputField
+                    label="Reorder Level"
+                    type="number"
+                    placeholder="Enter minimum stock level"
+                    value={formData.reorderLevel}
+                    onChange={handleInputChange("reorderLevel")}
+                    error={errors.reorderLevel}
+                    required
+                    step="0.01"
+                  />
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Last Supplier (Optional)
+                    </label>
+                    <select
+                      value={formData.lastSupplier}
+                      onChange={handleInputChange("lastSupplier")}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="">Select supplier</option>
+                      {suppliers.map((supplier) => (
+                        <option key={supplier.id} value={supplier.id}>
+                          {supplier.name} - {supplier.supplierId}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
+
+              {/* Stock Alert */}
+              {formData.currentStock && formData.reorderLevel && (
+                <div
+                  className={`border rounded-xl p-4 ${
+                    parseFloat(formData.currentStock) <=
+                    parseFloat(formData.reorderLevel)
+                      ? "bg-red-50 border-red-200"
+                      : "bg-green-50 border-green-200"
+                  }`}
+                >
+                  <div className="flex items-center">
+                    <svg
+                      className={`w-5 h-5 mr-2 ${
+                        parseFloat(formData.currentStock) <=
+                        parseFloat(formData.reorderLevel)
+                          ? "text-red-600"
+                          : "text-green-600"
+                      }`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <p
+                      className={`text-sm font-medium ${
+                        parseFloat(formData.currentStock) <=
+                        parseFloat(formData.reorderLevel)
+                          ? "text-red-700"
+                          : "text-green-700"
+                      }`}
+                    >
+                      {parseFloat(formData.currentStock) <=
+                      parseFloat(formData.reorderLevel)
+                        ? "⚠️ Stock level is below reorder threshold - Consider reordering"
+                        : "✓ Stock level is adequate"}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Submit Buttons */}
               <div className="flex justify-end space-x-4 pt-4">
@@ -654,16 +679,16 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                   {loading
                     ? isEditMode
                       ? "Updating..."
-                      : "Registering..."
+                      : "Adding..."
                     : isEditMode
-                    ? "Update Supplier"
-                    : "Register Supplier"}
+                    ? "Update Material"
+                    : "Add Material"}
                 </Button>
               </div>
             </form>
           </div>
         ) : (
-          /* Suppliers List */
+          /* Materials List */
           <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
             {/* Search and Filters */}
             <div className="p-6 border-b border-gray-200">
@@ -672,7 +697,7 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                   <div className="relative">
                     <input
                       type="text"
-                      placeholder="Search by name, contact, phone..."
+                      placeholder="Search materials..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="w-full px-4 py-3 pl-11 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
@@ -694,32 +719,32 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                 </div>
 
                 <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
+                  value={filterUnit}
+                  onChange={(e) => setFilterUnit(e.target.value)}
                   className="px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
-                  <option value="all">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-
-                <select
-                  value={filterPayment}
-                  onChange={(e) => setFilterPayment(e.target.value)}
-                  className="px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  <option value="all">All Payment Terms</option>
-                  {paymentTermsOptions.map((option) => (
+                  <option value="all">All Units</option>
+                  {unitOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
                 </select>
+
+                <select
+                  value={filterStock}
+                  onChange={(e) => setFilterStock(e.target.value)}
+                  className="px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="all">All Stock Levels</option>
+                  <option value="low">Low Stock</option>
+                  <option value="adequate">Adequate Stock</option>
+                </select>
               </div>
             </div>
 
-            {/* Suppliers Table */}
-            {filteredSuppliers.length === 0 ? (
+            {/* Materials Table */}
+            {filteredMaterials.length === 0 ? (
               <div className="p-12 text-center">
                 <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <svg
@@ -732,29 +757,25 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m0 0h2M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                      d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
                     />
                   </svg>
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  {searchTerm ||
-                  filterStatus !== "all" ||
-                  filterPayment !== "all"
-                    ? "No suppliers match your filters"
-                    : "No suppliers yet"}
+                  {searchTerm || filterUnit !== "all" || filterStock !== "all"
+                    ? "No materials match your filters"
+                    : "No materials yet"}
                 </h3>
                 <p className="text-gray-600 mb-6">
-                  {searchTerm ||
-                  filterStatus !== "all" ||
-                  filterPayment !== "all"
+                  {searchTerm || filterUnit !== "all" || filterStock !== "all"
                     ? "Try adjusting your search terms or filters"
-                    : "Get started by adding your first supplier"}
+                    : "Get started by adding your first raw material"}
                 </p>
                 {!searchTerm &&
-                  filterStatus === "all" &&
-                  filterPayment === "all" && (
+                  filterUnit === "all" &&
+                  filterStock === "all" && (
                     <Button onClick={() => setShowForm(true)} size="lg">
-                      Add First Supplier
+                      Add First Material
                     </Button>
                   )}
               </div>
@@ -764,16 +785,19 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Supplier
+                        Material
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Contact
+                        Current Stock
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                        Payment Terms
+                        Reorder Level
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                         Status
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Last Supplier
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                         Actions
@@ -781,114 +805,85 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
-                    {filteredSuppliers.map((supplier) => (
-                      <tr
-                        key={supplier.id}
-                        className="hover:bg-gray-50 transition-colors"
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white font-semibold text-sm shadow-sm">
-                              {supplier.name
-                                ? supplier.name.substring(0, 2).toUpperCase()
-                                : "??"}
-                            </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-semibold text-gray-900">
-                                {supplier.name}
+                    {filteredMaterials.map((material) => {
+                      const status = getStockStatus(material);
+                      return (
+                        <tr
+                          key={material.id}
+                          className="hover:bg-gray-50 transition-colors"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-semibold text-sm shadow-sm">
+                                {material.name
+                                  ? material.name.substring(0, 2).toUpperCase()
+                                  : "??"}
                               </div>
-                              <div className="text-sm text-gray-500">
-                                {supplier.supplierId}
+                              <div className="ml-4">
+                                <div className="text-sm font-semibold text-gray-900">
+                                  {material.name}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {material.materialId}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {supplier.contact}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {supplier.phone}
-                          </div>
-                          {supplier.email && (
-                            <div className="text-xs text-gray-400 mt-0.5">
-                              {supplier.email}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-bold text-gray-900">
+                              {material.currentStock} {material.unit}
                             </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold ${
-                              supplier.paymentTerms === "cash"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-blue-100 text-blue-700"
-                            }`}
-                          >
-                            {paymentTermsOptions.find(
-                              (o) => o.value === supplier.paymentTerms
-                            )?.label || supplier.paymentTerms}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold ${
-                              supplier.status === "active"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-red-100 text-red-700"
-                            }`}
-                          >
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-600">
+                              {material.reorderLevel} {material.unit}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <span
-                              className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
-                                supplier.status === "active"
-                                  ? "bg-green-500"
-                                  : "bg-red-500"
-                              }`}
-                            ></span>
-                            {supplier.status === "active"
-                              ? "Active"
-                              : "Inactive"}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex items-center space-x-3">
-                            <button
-                              onClick={() => handleViewSupplier(supplier)}
-                              className="text-blue-600 hover:text-blue-800 transition-colors font-medium"
+                              className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold ${status.color}`}
                             >
-                              View
-                            </button>
-                            <button
-                              onClick={() => {
-                                setFormData({
-                                  name: supplier.name,
-                                  contact: supplier.contact,
-                                  address: supplier.address || "",
-                                  email: supplier.email || "",
-                                  phone: supplier.phone,
-                                  paymentTerms: supplier.paymentTerms,
-                                });
-                                setShowForm(true);
-                              }}
-                              className="text-indigo-600 hover:text-indigo-800 transition-colors font-medium"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => toggleSupplierStatus(supplier)}
-                              className={`transition-colors font-medium ${
-                                supplier.status === "active"
-                                  ? "text-red-600 hover:text-red-800"
-                                  : "text-green-600 hover:text-green-800"
-                              }`}
-                            >
-                              {supplier.status === "active"
-                                ? "Deactivate"
-                                : "Activate"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full mr-1.5 ${status.dotColor}`}
+                              ></span>
+                              {status.label}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">
+                              {getSupplierName(material.lastSupplier)}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div className="flex items-center space-x-3">
+                              <button
+                                onClick={() => handleViewMaterial(material)}
+                                className="text-blue-600 hover:text-blue-800 transition-colors font-medium"
+                              >
+                                View
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setFormData({
+                                    name: material.name,
+                                    unit: material.unit,
+                                    currentStock:
+                                      material.currentStock?.toString(),
+                                    reorderLevel:
+                                      material.reorderLevel?.toString(),
+                                    lastSupplier: material.lastSupplier || "",
+                                  });
+                                  setShowForm(true);
+                                }}
+                                className="text-indigo-600 hover:text-indigo-800 transition-colors font-medium"
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -896,25 +891,25 @@ const AddingSuppliers = ({ editSupplier = null }) => {
           </div>
         )}
 
-        {/* View Supplier Modal */}
-        {showModal && selectedSupplier && (
+        {/* View Material Modal */}
+        {showModal && selectedMaterial && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
               {/* Modal Header */}
               <div className="sticky top-0 bg-white border-b border-gray-200 px-8 py-6 rounded-t-3xl">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
-                      {selectedSupplier.name
-                        ? selectedSupplier.name.substring(0, 2).toUpperCase()
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                      {selectedMaterial.name
+                        ? selectedMaterial.name.substring(0, 2).toUpperCase()
                         : "??"}
                     </div>
                     <div className="ml-5">
                       <h2 className="text-2xl font-bold text-gray-900">
-                        {selectedSupplier.name}
+                        {selectedMaterial.name}
                       </h2>
                       <p className="text-gray-600">
-                        {selectedSupplier.supplierId}
+                        {selectedMaterial.materialId}
                       </p>
                     </div>
                   </div>
@@ -941,89 +936,67 @@ const AddingSuppliers = ({ editSupplier = null }) => {
 
               {/* Modal Body */}
               <div className="px-8 py-6 space-y-6">
-                {/* Contact Information */}
+                {/* Stock Information */}
                 <div>
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                    Contact Information
+                    Stock Information
                   </h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-gray-50 rounded-xl p-4">
                       <span className="text-xs font-medium text-gray-500">
-                        Contact Person
+                        Current Stock
                       </span>
-                      <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {selectedSupplier.contact}
+                      <p className="text-xl font-bold text-gray-900 mt-1">
+                        {selectedMaterial.currentStock} {selectedMaterial.unit}
                       </p>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-4">
                       <span className="text-xs font-medium text-gray-500">
-                        Phone
+                        Reorder Level
                       </span>
-                      <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {selectedSupplier.phone}
+                      <p className="text-xl font-bold text-gray-900 mt-1">
+                        {selectedMaterial.reorderLevel} {selectedMaterial.unit}
                       </p>
                     </div>
-                    <div className="bg-gray-50 rounded-xl p-4 col-span-2">
+                    <div className="bg-gray-50 rounded-xl p-4">
                       <span className="text-xs font-medium text-gray-500">
-                        Email
-                      </span>
-                      <p className="text-sm font-semibold text-gray-900 mt-1 break-all">
-                        {selectedSupplier.email || "N/A"}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-4 col-span-2">
-                      <span className="text-xs font-medium text-gray-500">
-                        Address
+                        Unit of Measurement
                       </span>
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {selectedSupplier.address || "N/A"}
+                        {unitOptions.find(
+                          (u) => u.value === selectedMaterial.unit
+                        )?.label || selectedMaterial.unit}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <span className="text-xs font-medium text-gray-500">
+                        Stock Status
+                      </span>
+                      <p className="mt-1">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                            getStockStatus(selectedMaterial).color
+                          }`}
+                        >
+                          {getStockStatus(selectedMaterial).label}
+                        </span>
                       </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Business Details */}
+                {/* Supplier Information */}
                 <div>
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                    Business Details
+                    Supplier Information
                   </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <span className="text-xs font-medium text-gray-500">
-                        Payment Terms
-                      </span>
-                      <p className="mt-1">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                            selectedSupplier.paymentTerms === "cash"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-blue-100 text-blue-700"
-                          }`}
-                        >
-                          {paymentTermsOptions.find(
-                            (o) => o.value === selectedSupplier.paymentTerms
-                          )?.label || selectedSupplier.paymentTerms}
-                        </span>
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <span className="text-xs font-medium text-gray-500">
-                        Status
-                      </span>
-                      <p className="mt-1">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                            selectedSupplier.status === "active"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-100 text-red-700"
-                          }`}
-                        >
-                          {selectedSupplier.status === "active"
-                            ? "Active"
-                            : "Inactive"}
-                        </span>
-                      </p>
-                    </div>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <span className="text-xs font-medium text-gray-500">
+                      Last Supplier
+                    </span>
+                    <p className="text-sm font-semibold text-gray-900 mt-1">
+                      {getSupplierName(selectedMaterial.lastSupplier)}
+                    </p>
                   </div>
                 </div>
 
@@ -1038,7 +1011,7 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                         Created On
                       </span>
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {formatDate(selectedSupplier.createdAt)}
+                        {formatDate(selectedMaterial.createdAt)}
                       </p>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-4">
@@ -1046,7 +1019,7 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                         Last Updated
                       </span>
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {formatDate(selectedSupplier.updatedAt)}
+                        {formatDate(selectedMaterial.updatedAt)}
                       </p>
                     </div>
                   </div>
@@ -1065,18 +1038,17 @@ const AddingSuppliers = ({ editSupplier = null }) => {
                   <Button
                     onClick={() => {
                       setFormData({
-                        name: selectedSupplier.name,
-                        contact: selectedSupplier.contact,
-                        address: selectedSupplier.address || "",
-                        email: selectedSupplier.email || "",
-                        phone: selectedSupplier.phone,
-                        paymentTerms: selectedSupplier.paymentTerms,
+                        name: selectedMaterial.name,
+                        unit: selectedMaterial.unit,
+                        currentStock: selectedMaterial.currentStock?.toString(),
+                        reorderLevel: selectedMaterial.reorderLevel?.toString(),
+                        lastSupplier: selectedMaterial.lastSupplier || "",
                       });
                       setShowModal(false);
                       setShowForm(true);
                     }}
                   >
-                    Edit Supplier
+                    Edit Material
                   </Button>
                 </div>
               </div>
@@ -1088,7 +1060,7 @@ const AddingSuppliers = ({ editSupplier = null }) => {
         <SuccessDialog
           isOpen={showSuccess}
           onClose={() => setShowSuccess(false)}
-          title={isEditMode ? "Supplier Updated!" : "Supplier Registered!"}
+          title={isEditMode ? "Material Updated!" : "Material Added!"}
           message={successMessage}
           buttonText="Continue"
         />
@@ -1107,4 +1079,4 @@ const AddingSuppliers = ({ editSupplier = null }) => {
   );
 };
 
-export default AddingSuppliers;
+export default RawMaterials;
