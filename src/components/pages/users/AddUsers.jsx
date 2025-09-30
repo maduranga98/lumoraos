@@ -7,6 +7,8 @@ import {
   addDoc,
   serverTimestamp,
   getDoc,
+  query,
+  orderBy,
 } from "firebase/firestore";
 import { db } from "../../../services/firebase";
 import { useUser } from "../../../contexts/userContext";
@@ -21,55 +23,20 @@ const AddUsers = () => {
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
-    // Basic Information
-    fullName: "",
-    username: "",
-    email: "",
-    phoneNumber: "",
-
-    // Role and Department
-    role: "",
-    department: "",
-    position: "",
-    employeeId: "",
-
-    // Address Information
-    streetAddress: "",
-    city: "",
-    state: "",
-    zipCode: "",
-    country: "",
-
-    // Personal Information
-    dateOfBirth: "",
-    gender: "",
-    emergencyContactName: "",
-    emergencyContactPhone: "",
-
-    // Employment Details
-    dateOfJoining: "",
-    employmentType: "full-time",
+    name: "",
+    roleId: "",
     salary: "",
-    reportingManager: "",
-
-    // Bank Details
-    bankName: "",
-    bankBranch: "",
-    accountNumber: "",
-    routingNumber: "",
-
-    // Additional Details
-    nationalId: "",
-    taxId: "",
-    notes: "",
+    commission: "",
+    phone: "",
+    email: "",
+    hasAccount: false,
+    username: "",
   });
 
   const [roles, setRoles] = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [showNewRoleInput, setShowNewRoleInput] = useState(false);
-  const [showNewDepartmentInput, setShowNewDepartmentInput] = useState(false);
-  const [newRole, setNewRole] = useState("");
-  const [newDepartment, setNewDepartment] = useState("");
+  const [showNewRoleModal, setShowNewRoleModal] = useState(false);
+  const [newRoleName, setNewRoleName] = useState("");
+  const [newRolePermissions, setNewRolePermissions] = useState([]);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -84,6 +51,19 @@ const AddUsers = () => {
   // Auto-generated password
   const [generatedPassword, setGeneratedPassword] = useState("");
 
+  // Available permissions
+  const availablePermissions = [
+    "view_employees",
+    "manage_employees",
+    "view_inventory",
+    "manage_inventory",
+    "view_sales",
+    "manage_sales",
+    "view_reports",
+    "manage_suppliers",
+    "manage_vehicles",
+  ];
+
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !currentUser) {
@@ -91,19 +71,55 @@ const AddUsers = () => {
     }
   }, [authLoading, currentUser, navigate]);
 
-  // Generate simple, memorable password using name and username
+  // Load roles on component mount
+  useEffect(() => {
+    if (currentUser) {
+      loadRoles();
+    }
+  }, [currentUser]);
+
+  // Generate password when hasAccount is enabled
+  useEffect(() => {
+    if (formData.hasAccount && !generatedPassword) {
+      setGeneratedPassword(generatePassword());
+    }
+  }, [formData.hasAccount]);
+
+  // Update password when name or username changes
+  useEffect(() => {
+    if (formData.hasAccount && (formData.name || formData.username)) {
+      setGeneratedPassword(generatePassword(formData.name, formData.username));
+    }
+  }, [formData.name, formData.username, formData.hasAccount]);
+
+  const loadRoles = async () => {
+    try {
+      const rolesQuery = query(collection(db, "roles"), orderBy("name"));
+      const rolesSnapshot = await getDocs(rolesQuery);
+      const rolesData = rolesSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setRoles(rolesData);
+    } catch (error) {
+      console.error("Error loading roles:", error);
+      setErrorMessage("Failed to load roles. Please try again.");
+      setShowError(true);
+    }
+  };
+
   const generatePassword = (
-    fullName = formData.fullName,
+    name = formData.name,
     username = formData.username
   ) => {
-    if (!fullName && !username) {
+    if (!name && !username) {
       const words = ["Easy", "Safe", "Cool", "Good"];
       const numbers = Math.floor(Math.random() * 99) + 1;
       return `${words[Math.floor(Math.random() * words.length)]}${numbers}`;
     }
 
-    const firstName = fullName
-      ? fullName
+    const firstName = name
+      ? name
           .trim()
           .split(" ")[0]
           .replace(/[^a-zA-Z]/g, "")
@@ -133,27 +149,10 @@ const AddUsers = () => {
     return passwordBase + suffix;
   };
 
-  // Initialize generated password
-  useEffect(() => {
-    setGeneratedPassword(generatePassword());
-  }, []);
-
-  // Update password when name or username changes
-  useEffect(() => {
-    if (formData.fullName || formData.username) {
-      setGeneratedPassword(
-        generatePassword(formData.fullName, formData.username)
-      );
-    }
-  }, [formData.fullName, formData.username]);
-
   const regeneratePassword = () => {
-    setGeneratedPassword(
-      generatePassword(formData.fullName, formData.username)
-    );
+    setGeneratedPassword(generatePassword(formData.name, formData.username));
   };
 
-  // Username availability check
   const checkUsernameAvailability = async (username) => {
     if (!username || username.length < 3) {
       setUsernameAvailable(null);
@@ -173,43 +172,15 @@ const AddUsers = () => {
     }
   };
 
-  // Debounced username check
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      if (formData.username) {
+      if (formData.hasAccount && formData.username) {
         checkUsernameAvailability(formData.username);
       }
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [formData.username]);
-
-  // Load roles and departments on component mount
-  useEffect(() => {
-    if (currentUser) {
-      loadRolesAndDepartments();
-    }
-  }, [currentUser]);
-
-  const loadRolesAndDepartments = async () => {
-    try {
-      const rolesSnapshot = await getDocs(collection(db, "roles"));
-      const rolesData = rolesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setRoles(rolesData);
-
-      const departmentsSnapshot = await getDocs(collection(db, "departments"));
-      const departmentsData = departmentsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setDepartments(departmentsData);
-    } catch (error) {
-      console.error("Error loading roles and departments:", error);
-    }
-  };
+  }, [formData.username, formData.hasAccount]);
 
   const handleInputChange = (field) => (e) => {
     let value = e.target.value;
@@ -218,8 +189,8 @@ const AddUsers = () => {
       value = value.toLowerCase().replace(/[^a-z0-9_]/g, "");
     } else if (field === "email") {
       value = value.toLowerCase();
-    } else if (field === "employeeId") {
-      value = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    } else if (field === "salary" || field === "commission") {
+      value = value.replace(/[^0-9.]/g, "");
     }
 
     setFormData((prev) => ({
@@ -235,86 +206,53 @@ const AddUsers = () => {
     }
   };
 
-  const addNewRole = async () => {
-    if (!newRole.trim()) return;
+  const handleAccountToggle = () => {
+    setFormData((prev) => ({
+      ...prev,
+      hasAccount: !prev.hasAccount,
+      username: !prev.hasAccount ? prev.username : "",
+    }));
 
-    try {
-      const roleData = {
-        name: newRole.trim(),
-        createdAt: serverTimestamp(),
-      };
-
-      // Add createdBy only if currentUser has userId
-      if (currentUser?.userId) {
-        roleData.createdBy = currentUser.userId;
-      }
-
-      const docRef = await addDoc(collection(db, "roles"), roleData);
-
-      const newRoleData = {
-        id: docRef.id,
-        name: newRole.trim(),
-        createdAt: new Date(),
-      };
-
-      // Add createdBy only if currentUser has userId
-      if (currentUser?.userId) {
-        newRoleData.createdBy = currentUser.userId;
-      }
-
-      setRoles((prev) => [...prev, newRoleData]);
-
-      setFormData((prev) => ({ ...prev, role: newRole.trim() }));
-      setNewRole("");
-      setShowNewRoleInput(false);
-    } catch (error) {
-      console.error("Error adding new role:", error);
-      setErrorMessage("Failed to add new role. Please try again.");
-      setShowError(true);
+    if (!formData.hasAccount) {
+      setGeneratedPassword(generatePassword());
+    } else {
+      setGeneratedPassword("");
+      setUsernameAvailable(null);
     }
   };
 
-  const addNewDepartment = async () => {
-    if (!newDepartment.trim()) return;
+  const handleAddRole = async () => {
+    if (!newRoleName.trim()) {
+      setErrorMessage("Role name is required");
+      setShowError(true);
+      return;
+    }
 
     try {
-      const departmentData = {
-        name: newDepartment.trim(),
+      const roleData = {
+        name: newRoleName.trim(),
+        permissions: newRolePermissions,
         createdAt: serverTimestamp(),
+        createdBy: currentUser.userId,
+        updatedAt: serverTimestamp(),
       };
 
-      // Add createdBy only if currentUser has userId
-      if (currentUser?.userId) {
-        departmentData.createdBy = currentUser.userId;
-      }
+      const docRef = await addDoc(collection(db, "roles"), roleData);
 
-      console.log("Creating department with data:", departmentData);
-      console.log("Current user:", currentUser);
-
-      const docRef = await addDoc(
-        collection(db, "departments"),
-        departmentData
-      );
-
-      const newDepartmentData = {
+      const newRole = {
         id: docRef.id,
-        name: newDepartment.trim(),
-        createdAt: new Date(),
+        ...roleData,
       };
 
-      // Add createdBy only if currentUser has userId
-      if (currentUser?.userId) {
-        newDepartmentData.createdBy = currentUser.userId;
-      }
+      setRoles((prev) => [...prev, newRole]);
+      setFormData((prev) => ({ ...prev, roleId: docRef.id }));
 
-      setDepartments((prev) => [...prev, newDepartmentData]);
-
-      setFormData((prev) => ({ ...prev, department: newDepartment.trim() }));
-      setNewDepartment("");
-      setShowNewDepartmentInput(false);
+      setNewRoleName("");
+      setNewRolePermissions([]);
+      setShowNewRoleModal(false);
     } catch (error) {
-      console.error("Error adding new department:", error);
-      setErrorMessage("Failed to add new department. Please try again.");
+      console.error("Error adding role:", error);
+      setErrorMessage("Failed to add role. Please try again.");
       setShowError(true);
     }
   };
@@ -322,16 +260,44 @@ const AddUsers = () => {
   const validateForm = () => {
     const newErrors = {};
 
-    // Required fields validation
-    if (!formData.fullName.trim()) newErrors.fullName = "Full name is required";
-    if (!formData.username.trim()) newErrors.username = "Username is required";
-    if (!formData.role.trim()) newErrors.role = "Role is required";
-    if (!formData.department.trim())
-      newErrors.department = "Department is required";
+    // Required fields
+    if (!formData.name.trim()) newErrors.name = "Name is required";
+    if (!formData.roleId) newErrors.roleId = "Role is required";
+    if (!formData.phone.trim()) newErrors.phone = "Phone number is required";
 
-    // Username validation
-    if (formData.username) {
-      if (formData.username.length < 3) {
+    // Phone validation
+    if (formData.phone && !/^\+?[\d\s-()]+$/.test(formData.phone)) {
+      newErrors.phone = "Please enter a valid phone number";
+    }
+
+    // Email validation (optional but must be valid if provided)
+    if (formData.email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        newErrors.email = "Please enter a valid email address";
+      }
+    }
+
+    // Salary and commission validation
+    if (
+      formData.salary &&
+      (isNaN(formData.salary) || parseFloat(formData.salary) < 0)
+    ) {
+      newErrors.salary = "Please enter a valid salary amount";
+    }
+
+    if (
+      formData.commission &&
+      (isNaN(formData.commission) || parseFloat(formData.commission) < 0)
+    ) {
+      newErrors.commission = "Please enter a valid commission amount";
+    }
+
+    // Account-specific validation
+    if (formData.hasAccount) {
+      if (!formData.username.trim()) {
+        newErrors.username = "Username is required for system accounts";
+      } else if (formData.username.length < 3) {
         newErrors.username = "Username must be at least 3 characters";
       } else if (formData.username.length > 20) {
         newErrors.username = "Username must be less than 20 characters";
@@ -343,47 +309,24 @@ const AddUsers = () => {
       }
     }
 
-    // Email validation (only if provided)
-    if (formData.email) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email)) {
-        newErrors.email = "Please enter a valid email address";
-      }
-    }
-
-    // Phone number validation
-    if (formData.phoneNumber && !/^\+?[\d\s-()]+$/.test(formData.phoneNumber)) {
-      newErrors.phoneNumber = "Please enter a valid phone number";
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const generateEmployeeId = () => {
-    const prefix = formData.department.substring(0, 3).toUpperCase();
-    const randomNum = Math.floor(Math.random() * 10000)
+    const prefix = "EMP";
+    const timestamp = Date.now().toString().slice(-6);
+    const random = Math.floor(Math.random() * 100)
       .toString()
-      .padStart(4, "0");
-    return `${prefix}${randomNum}`;
+      .padStart(2, "0");
+    return `${prefix}${timestamp}${random}`;
   };
 
   const cleanData = (obj) => {
     const cleaned = {};
     Object.keys(obj).forEach((key) => {
       if (obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
-        if (
-          typeof obj[key] === "object" &&
-          !Array.isArray(obj[key]) &&
-          obj[key].constructor === Object
-        ) {
-          const cleanedNested = cleanData(obj[key]);
-          if (Object.keys(cleanedNested).length > 0) {
-            cleaned[key] = cleanedNested;
-          }
-        } else {
-          cleaned[key] = obj[key];
-        }
+        cleaned[key] = obj[key];
       }
     });
     return cleaned;
@@ -394,10 +337,9 @@ const AddUsers = () => {
 
     if (!validateForm()) return;
 
-    // Fixed: Check for userId instead of uid
     if (!currentUser?.userId) {
       setErrorMessage(
-        "You must be logged in to create users. Please refresh and try again."
+        "You must be logged in to create employees. Please refresh and try again."
       );
       setShowError(true);
       return;
@@ -406,153 +348,85 @@ const AddUsers = () => {
     setLoading(true);
 
     try {
-      // Create a new document reference to get the auto-generated ID
-      const userDocRef = doc(collection(db, "users"));
-      const userId = userDocRef.id; // This is our user ID
+      const employeeDocRef = doc(collection(db, "employees"));
+      const employeeId = generateEmployeeId();
 
-      // Prepare user data with the document ID as userId
-      const userData = cleanData({
-        // System fields - using document ID as user ID
-        userId: userId,
+      // Get role name for display
+      const selectedRole = roles.find((r) => r.id === formData.roleId);
 
-        // Basic Info
-        fullName: formData.fullName,
-        username: formData.username,
-        email: formData.email,
-        phoneNumber: formData.phoneNumber,
-
-        // Authentication - store password securely in production
-        password: generatedPassword, // In production, hash this password
-
-        // Role and Department
-        role: formData.role,
-        department: formData.department,
-        position: formData.position,
-        employeeId: formData.employeeId || generateEmployeeId(),
-
-        // Address
-        address: {
-          street: formData.streetAddress,
-          city: formData.city,
-          state: formData.state,
-          zipCode: formData.zipCode,
-          country: formData.country,
-        },
-
-        // Personal Info
-        personalInfo: {
-          dateOfBirth: formData.dateOfBirth,
-          gender: formData.gender,
-          emergencyContact: {
-            name: formData.emergencyContactName,
-            phone: formData.emergencyContactPhone,
-          },
-        },
-
-        // Employment Details
-        employment: {
-          dateOfJoining: formData.dateOfJoining,
-          employmentType: formData.employmentType,
-          salary: formData.salary,
-          reportingManager: formData.reportingManager,
-        },
-
-        // Bank Details
-        bankDetails: {
-          bankName: formData.bankName,
-          bankBranch: formData.bankBranch,
-          accountNumber: formData.accountNumber,
-          routingNumber: formData.routingNumber,
-        },
-
-        // Additional Details
-        additionalInfo: {
-          nationalId: formData.nationalId,
-          taxId: formData.taxId,
-          notes: formData.notes,
-        },
-
-        // System fields - Fixed: Use userId instead of uid
-        isActive: true,
+      const employeeData = cleanData({
+        employeeId: employeeId,
+        name: formData.name.trim(),
+        roleId: formData.roleId,
+        roleName: selectedRole?.name || "", // For easy display
+        salary: formData.salary ? parseFloat(formData.salary) : 0,
+        commission: formData.commission ? parseFloat(formData.commission) : 0,
+        phone: formData.phone.trim(),
+        email: formData.email.trim(),
+        hasAccount: formData.hasAccount,
+        username: formData.hasAccount ? formData.username.toLowerCase() : null,
+        passwordHash: formData.hasAccount ? generatedPassword : null, // In production, hash this
+        status: "active",
         createdAt: serverTimestamp(),
         createdBy: currentUser.userId,
         updatedAt: serverTimestamp(),
       });
 
-      // Save user data to Firestore using the generated document ID
-      await setDoc(userDocRef, userData);
+      await setDoc(employeeDocRef, employeeData);
 
-      // Reserve username
-      await setDoc(doc(db, "usernames", formData.username.toLowerCase()), {
-        userId: userId,
-        createdAt: serverTimestamp(),
-      });
+      // Reserve username if account is created
+      if (formData.hasAccount) {
+        await setDoc(doc(db, "usernames", formData.username.toLowerCase()), {
+          employeeId: employeeId,
+          userId: employeeDocRef.id,
+          createdAt: serverTimestamp(),
+        });
+      }
 
       // Log activity
       try {
         await addDoc(collection(db, "activities"), {
-          type: "user_created",
-          description: `New user ${formData.fullName} (${formData.username}) was created`,
-          performedBy: currentUser.userId, // Fixed: Use userId instead of uid
-          targetUserId: userId,
+          type: "employee_created",
+          description: `New employee ${formData.name} was created${
+            formData.hasAccount ? " with system account" : ""
+          }`,
+          performedBy: currentUser.userId,
+          targetEmployeeId: employeeId,
           timestamp: serverTimestamp(),
         });
       } catch (activityError) {
         console.warn("Failed to log activity:", activityError);
       }
 
-      setSuccessMessage(
-        `User ${formData.fullName} has been successfully created with ID: ${userId}. Password: ${generatedPassword} - Please share this with the employee.`
-      );
+      const successMsg = formData.hasAccount
+        ? `Employee ${formData.name} has been successfully created!\n\nEmployee ID: ${employeeId}\nUsername: ${formData.username}\nPassword: ${generatedPassword}\n\nPlease share these credentials with the employee.`
+        : `Employee ${formData.name} has been successfully created with ID: ${employeeId}`;
+
+      setSuccessMessage(successMsg);
       setShowSuccess(true);
 
       // Reset form
       setFormData({
-        fullName: "",
-        username: "",
-        email: "",
-        phoneNumber: "",
-        role: "",
-        department: "",
-        position: "",
-        employeeId: "",
-        streetAddress: "",
-        city: "",
-        state: "",
-        zipCode: "",
-        country: "",
-        dateOfBirth: "",
-        gender: "",
-        emergencyContactName: "",
-        emergencyContactPhone: "",
-        dateOfJoining: "",
-        employmentType: "full-time",
+        name: "",
+        roleId: "",
         salary: "",
-        reportingManager: "",
-        bankName: "",
-        bankBranch: "",
-        accountNumber: "",
-        routingNumber: "",
-        nationalId: "",
-        taxId: "",
-        notes: "",
+        commission: "",
+        phone: "",
+        email: "",
+        hasAccount: false,
+        username: "",
       });
-
-      // Generate new password for next user
-      setGeneratedPassword(generatePassword());
+      setGeneratedPassword("");
       setUsernameAvailable(null);
     } catch (error) {
-      console.error("Error creating user:", error);
+      console.error("Error creating employee:", error);
 
-      let errorMsg = "Failed to create user. Please try again.";
+      let errorMsg = "Failed to create employee. Please try again.";
 
       if (error.code === "permission-denied") {
-        errorMsg = "You don't have permission to create users.";
+        errorMsg = "You don't have permission to create employees.";
       } else if (error.code === "network-request-failed") {
         errorMsg = "Network error. Please check your connection and try again.";
-      } else {
-        errorMsg =
-          error.message || "An unexpected error occurred. Please try again.";
       }
 
       setErrorMessage(errorMsg);
@@ -565,7 +439,7 @@ const AddUsers = () => {
   // Show loading while checking auth
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <div className="flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -576,168 +450,105 @@ const AddUsers = () => {
     );
   }
 
-  // Don't render if user is not authenticated
   if (!currentUser) {
     return null;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4">
       <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        {/* Back Button */}
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-4 flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+        >
+          <svg
+            className="w-5 h-5 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 19l-7-7 7-7"
+            />
+          </svg>
+          Back to Dashboard
+        </button>
+
+        <div className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
           {/* Header */}
           <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg
+                className="w-8 h-8 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+                />
+              </svg>
+            </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Employee Registration
+              Add New Employee
             </h1>
-            <p className="text-gray-600">
-              Register a new employee with complete details
-            </p>
+            <p className="text-gray-600">Fill in the employee details below</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
             {/* Basic Information */}
-            <div className="border border-gray-200 rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+            <div className="border border-gray-200 rounded-xl p-6 bg-gray-50">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                <span className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+                  <svg
+                    className="w-5 h-5 text-blue-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    />
+                  </svg>
+                </span>
                 Basic Information
               </h2>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <InputField
                   label="Full Name"
                   type="text"
-                  placeholder="Enter full name"
-                  value={formData.fullName}
-                  onChange={handleInputChange("fullName")}
-                  error={errors.fullName}
+                  placeholder="Enter employee name"
+                  value={formData.name}
+                  onChange={handleInputChange("name")}
+                  error={errors.name}
                   required
                 />
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Username <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Enter username"
-                      value={formData.username}
-                      onChange={handleInputChange("username")}
-                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
-                        errors.username
-                          ? "border-red-500"
-                          : usernameAvailable === true
-                          ? "border-green-500"
-                          : usernameAvailable === false
-                          ? "border-red-500"
-                          : "border-gray-300"
-                      }`}
-                      required
-                    />
-                    {usernameChecking && (
-                      <div className="absolute right-3 top-3">
-                        <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                      </div>
-                    )}
-                    {usernameAvailable === true && (
-                      <div className="absolute right-3 top-3 text-green-500">
-                        ✓
-                      </div>
-                    )}
-                    {usernameAvailable === false && (
-                      <div className="absolute right-3 top-3 text-red-500">
-                        ✗
-                      </div>
-                    )}
-                  </div>
-                  {errors.username && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {errors.username}
-                    </p>
-                  )}
-                  {usernameAvailable === true && !errors.username && (
-                    <p className="text-sm text-green-600 mt-1">
-                      Username is available!
-                    </p>
-                  )}
-                  {usernameAvailable === false && !errors.username && (
-                    <p className="text-sm text-red-600 mt-1">
-                      Username is already taken
-                    </p>
-                  )}
-                </div>
-                <InputField
-                  label="Email"
-                  type="email"
-                  placeholder="Enter email address (optional)"
-                  value={formData.email}
-                  onChange={handleInputChange("email")}
-                  error={errors.email}
-                />
-                <InputField
-                  label="Phone Number"
-                  type="tel"
-                  placeholder="Enter phone number"
-                  value={formData.phoneNumber}
-                  onChange={handleInputChange("phoneNumber")}
-                  error={errors.phoneNumber}
-                />
-              </div>
 
-              {/* Auto-generated Password */}
-              <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-medium text-blue-900">
-                      Auto-generated Password
-                    </h3>
-                    <p className="text-lg font-mono font-bold text-blue-700 mt-1">
-                      {generatedPassword}
-                    </p>
-                    <p className="text-xs text-blue-600 mt-1">
-                      Password based on employee's name - easy to remember!
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={regeneratePassword}
-                  >
-                    Regenerate
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Role and Department */}
-            <div className="border border-gray-200 rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Role & Department
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Role Selection */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Role <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-2">
                     <select
-                      value={formData.role}
-                      onChange={handleInputChange("role")}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={formData.roleId}
+                      onChange={handleInputChange("roleId")}
+                      className="flex-1 px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                       required
                     >
-                      <option value="">
-                        {roles.length > 0
-                          ? "Select a role"
-                          : "No roles available - create one below"}
-                      </option>
-                      <option value="HR">HR</option>
-                      <option value="Accountant">Accountant</option>
-                      <option value="Employee">Employee</option>
-                      <option value="Manager">Manager</option>
-                      <option value="Admin">Admin</option>
+                      <option value="">Select a role</option>
                       {roles.map((role) => (
-                        <option key={role.id} value={role.name}>
+                        <option key={role.id} value={role.id}>
                           {role.name}
                         </option>
                       ))}
@@ -746,395 +557,402 @@ const AddUsers = () => {
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setShowNewRoleInput(!showNewRoleInput)}
+                      onClick={() => setShowNewRoleModal(true)}
                       title="Add new role"
+                      className="px-4"
                     >
-                      +
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 4v16m8-8H4"
+                        />
+                      </svg>
                     </Button>
                   </div>
-                  {showNewRoleInput && (
-                    <div className="flex gap-2 mt-2">
-                      <input
-                        type="text"
-                        placeholder="New role name"
-                        value={newRole}
-                        onChange={(e) => setNewRole(e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        onKeyPress={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            addNewRole();
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={addNewRole}
-                        disabled={!newRole.trim()}
-                      >
-                        Add
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setNewRole("");
-                          setShowNewRoleInput(false);
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  )}
-                  {errors.role && (
-                    <p className="text-sm text-red-600 mt-1">{errors.role}</p>
-                  )}
-                </div>
-
-                {/* Department Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Department <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex gap-2">
-                    <select
-                      value={formData.department}
-                      onChange={handleInputChange("department")}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    >
-                      <option value="">
-                        {departments.length > 0
-                          ? "Select a department"
-                          : "No departments available - create one below"}
-                      </option>
-                      <option value="Human Resources">Human Resources</option>
-                      <option value="Finance">Finance</option>
-                      <option value="IT">IT</option>
-                      <option value="Sales">Sales</option>
-                      <option value="Marketing">Marketing</option>
-                      <option value="Operations">Operations</option>
-                      {departments.map((dept) => (
-                        <option key={dept.id} value={dept.name}>
-                          {dept.name}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setShowNewDepartmentInput(!showNewDepartmentInput)
-                      }
-                      title="Add new department"
-                    >
-                      +
-                    </Button>
-                  </div>
-                  {showNewDepartmentInput && (
-                    <div className="flex gap-2 mt-2">
-                      <input
-                        type="text"
-                        placeholder="New department name"
-                        value={newDepartment}
-                        onChange={(e) => setNewDepartment(e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        onKeyPress={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            addNewDepartment();
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={addNewDepartment}
-                        disabled={!newDepartment.trim()}
-                      >
-                        Add
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setNewDepartment("");
-                          setShowNewDepartmentInput(false);
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  )}
-                  {errors.department && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {errors.department}
-                    </p>
+                  {errors.roleId && (
+                    <p className="text-sm text-red-600 mt-1">{errors.roleId}</p>
                   )}
                 </div>
 
                 <InputField
-                  label="Position"
-                  type="text"
-                  placeholder="Enter position/job title"
-                  value={formData.position}
-                  onChange={handleInputChange("position")}
-                  error={errors.position}
-                />
-                <InputField
-                  label="Employee ID"
-                  type="text"
-                  placeholder="Enter employee ID (auto-generated if empty)"
-                  value={formData.employeeId}
-                  onChange={handleInputChange("employeeId")}
-                  error={errors.employeeId}
-                />
-              </div>
-            </div>
-
-            {/* Address Information */}
-            <div className="border border-gray-200 rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Address Information
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <InputField
-                    label="Street Address"
-                    type="text"
-                    placeholder="Enter street address"
-                    value={formData.streetAddress}
-                    onChange={handleInputChange("streetAddress")}
-                  />
-                </div>
-                <InputField
-                  label="City"
-                  type="text"
-                  placeholder="Enter city"
-                  value={formData.city}
-                  onChange={handleInputChange("city")}
-                />
-                <InputField
-                  label="State/Province"
-                  type="text"
-                  placeholder="Enter state or province"
-                  value={formData.state}
-                  onChange={handleInputChange("state")}
-                />
-                <InputField
-                  label="ZIP/Postal Code"
-                  type="text"
-                  placeholder="Enter ZIP or postal code"
-                  value={formData.zipCode}
-                  onChange={handleInputChange("zipCode")}
-                />
-                <InputField
-                  label="Country"
-                  type="text"
-                  placeholder="Enter country"
-                  value={formData.country}
-                  onChange={handleInputChange("country")}
-                />
-              </div>
-            </div>
-
-            {/* Personal Information */}
-            <div className="border border-gray-200 rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Personal Information
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <InputField
-                  label="Date of Birth"
-                  type="date"
-                  value={formData.dateOfBirth}
-                  onChange={handleInputChange("dateOfBirth")}
-                />
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Gender
-                  </label>
-                  <select
-                    value={formData.gender}
-                    onChange={handleInputChange("gender")}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select gender</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                    <option value="Prefer not to say">Prefer not to say</option>
-                  </select>
-                </div>
-                <InputField
-                  label="Emergency Contact Name"
-                  type="text"
-                  placeholder="Enter emergency contact name"
-                  value={formData.emergencyContactName}
-                  onChange={handleInputChange("emergencyContactName")}
-                />
-                <InputField
-                  label="Emergency Contact Phone"
+                  label="Phone Number"
                   type="tel"
-                  placeholder="Enter emergency contact phone"
-                  value={formData.emergencyContactPhone}
-                  onChange={handleInputChange("emergencyContactPhone")}
+                  placeholder="Enter phone number"
+                  value={formData.phone}
+                  onChange={handleInputChange("phone")}
+                  error={errors.phone}
+                  required
+                />
+
+                <InputField
+                  label="Email Address"
+                  type="email"
+                  placeholder="Enter email (optional)"
+                  value={formData.email}
+                  onChange={handleInputChange("email")}
+                  error={errors.email}
                 />
               </div>
             </div>
 
-            {/* Employment Details */}
-            <div className="border border-gray-200 rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Employment Details
+            {/* Compensation */}
+            <div className="border border-gray-200 rounded-xl p-6 bg-gray-50">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                <span className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
+                  <svg
+                    className="w-5 h-5 text-green-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </span>
+                Compensation
               </h2>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <InputField
-                  label="Date of Joining"
-                  type="date"
-                  value={formData.dateOfJoining}
-                  onChange={handleInputChange("dateOfJoining")}
-                />
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Employment Type
-                  </label>
-                  <select
-                    value={formData.employmentType}
-                    onChange={handleInputChange("employmentType")}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="full-time">Full Time</option>
-                    <option value="part-time">Part Time</option>
-                    <option value="contract">Contract</option>
-                    <option value="intern">Intern</option>
-                    <option value="consultant">Consultant</option>
-                  </select>
-                </div>
-                <InputField
-                  label="Salary"
+                  label="Monthly Salary"
                   type="number"
                   placeholder="Enter salary amount"
                   value={formData.salary}
                   onChange={handleInputChange("salary")}
+                  error={errors.salary}
+                  step="0.01"
                 />
+
                 <InputField
-                  label="Reporting Manager"
-                  type="text"
-                  placeholder="Enter reporting manager"
-                  value={formData.reportingManager}
-                  onChange={handleInputChange("reportingManager")}
+                  label="Commission Rate (%)"
+                  type="number"
+                  placeholder="Enter commission percentage"
+                  value={formData.commission}
+                  onChange={handleInputChange("commission")}
+                  error={errors.commission}
+                  step="0.01"
                 />
               </div>
             </div>
 
-            {/* Bank Details */}
-            <div className="border border-gray-200 rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Bank Details
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <InputField
-                  label="Bank Name"
-                  type="text"
-                  placeholder="Enter bank name"
-                  value={formData.bankName}
-                  onChange={handleInputChange("bankName")}
-                />
-                <InputField
-                  label="Bank Branch"
-                  type="text"
-                  placeholder="Enter bank branch"
-                  value={formData.bankBranch}
-                  onChange={handleInputChange("bankBranch")}
-                />
-                <InputField
-                  label="Account Number"
-                  type="text"
-                  placeholder="Enter account number"
-                  value={formData.accountNumber}
-                  onChange={handleInputChange("accountNumber")}
-                />
-                <InputField
-                  label="Routing Number / IFSC Code"
-                  type="text"
-                  placeholder="Enter routing number or IFSC code"
-                  value={formData.routingNumber}
-                  onChange={handleInputChange("routingNumber")}
-                />
-              </div>
-            </div>
+            {/* System Account */}
+            <div className="border border-gray-200 rounded-xl p-6 bg-gray-50">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-900 flex items-center">
+                  <span className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
+                    <svg
+                      className="w-5 h-5 text-purple-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.031 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                      />
+                    </svg>
+                  </span>
+                  System Account
+                </h2>
 
-            {/* Additional Details */}
-            <div className="border border-gray-200 rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Additional Details
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <InputField
-                  label="National ID"
-                  type="text"
-                  placeholder="Enter national ID number"
-                  value={formData.nationalId}
-                  onChange={handleInputChange("nationalId")}
-                />
-                <InputField
-                  label="Tax ID"
-                  type="text"
-                  placeholder="Enter tax ID number"
-                  value={formData.taxId}
-                  onChange={handleInputChange("taxId")}
-                />
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Notes
-                  </label>
-                  <textarea
-                    value={formData.notes}
-                    onChange={handleInputChange("notes")}
-                    placeholder="Enter any additional notes..."
-                    rows={4}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                  />
+                <label className="flex items-center cursor-pointer">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={formData.hasAccount}
+                      onChange={handleAccountToggle}
+                    />
+                    <div
+                      className={`block w-14 h-8 rounded-full transition ${
+                        formData.hasAccount ? "bg-blue-600" : "bg-gray-300"
+                      }`}
+                    ></div>
+                    <div
+                      className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition ${
+                        formData.hasAccount ? "transform translate-x-6" : ""
+                      }`}
+                    ></div>
+                  </div>
+                  <span className="ml-3 text-sm font-medium text-gray-700">
+                    Create login account
+                  </span>
+                </label>
+              </div>
+
+              {formData.hasAccount && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Username <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Enter username"
+                        value={formData.username}
+                        onChange={handleInputChange("username")}
+                        className={`w-full px-3 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                          errors.username
+                            ? "border-red-500"
+                            : usernameAvailable === true
+                            ? "border-green-500"
+                            : usernameAvailable === false
+                            ? "border-red-500"
+                            : "border-gray-300"
+                        }`}
+                        required
+                      />
+                      {usernameChecking && (
+                        <div className="absolute right-3 top-3.5">
+                          <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                      )}
+                      {usernameAvailable === true && (
+                        <div className="absolute right-3 top-3.5 text-green-500">
+                          <svg
+                            className="w-5 h-5"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                      {usernameAvailable === false && (
+                        <div className="absolute right-3 top-3.5 text-red-500">
+                          <svg
+                            className="w-5 h-5"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    {errors.username && (
+                      <p className="text-sm text-red-600 mt-1">
+                        {errors.username}
+                      </p>
+                    )}
+                    {usernameAvailable === true && !errors.username && (
+                      <p className="text-sm text-green-600 mt-1">
+                        Username is available!
+                      </p>
+                    )}
+                    {usernameAvailable === false && !errors.username && (
+                      <p className="text-sm text-red-600 mt-1">
+                        Username is already taken
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Auto-generated Password */}
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <h3 className="text-sm font-medium text-blue-900 mb-1">
+                          Auto-generated Password
+                        </h3>
+                        <p className="text-xl font-mono font-bold text-blue-700">
+                          {generatedPassword}
+                        </p>
+                        <p className="text-xs text-blue-600 mt-1">
+                          Save this password - it won't be shown again
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={regeneratePassword}
+                        className="ml-4"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Submit Button */}
-            <div className="flex justify-end space-x-4">
+            {/* Submit Buttons */}
+            <div className="flex justify-end space-x-4 pt-4">
               <Button
                 type="button"
-                variant="outline"
-                onClick={() => window.history.back()}
+                variant="secondary"
+                onClick={() => navigate(-1)}
+                className="px-6"
               >
                 Cancel
               </Button>
-              <Button type="submit" loading={loading} size="lg">
-                {loading ? "Registering Employee..." : "Register Employee"}
+              <Button
+                type="submit"
+                loading={loading}
+                size="lg"
+                className="px-8"
+              >
+                {loading ? "Creating Employee..." : "Create Employee"}
               </Button>
             </div>
           </form>
         </div>
       </div>
 
+      {/* Add Role Modal */}
+      {showNewRoleModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Add New Role</h3>
+              <button
+                onClick={() => {
+                  setShowNewRoleModal(false);
+                  setNewRoleName("");
+                  setNewRolePermissions([]);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <InputField
+                label="Role Name"
+                type="text"
+                placeholder="Enter role name (e.g., Sales Manager)"
+                value={newRoleName}
+                onChange={(e) => setNewRoleName(e.target.value)}
+                required
+              />
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Permissions
+                </label>
+                <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto">
+                  {availablePermissions.map((permission) => (
+                    <label
+                      key={permission}
+                      className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={newRolePermissions.includes(permission)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setNewRolePermissions((prev) => [
+                              ...prev,
+                              permission,
+                            ]);
+                          } else {
+                            setNewRolePermissions((prev) =>
+                              prev.filter((p) => p !== permission)
+                            );
+                          }
+                        }}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">
+                        {permission
+                          .replace(/_/g, " ")
+                          .replace(/\b\w/g, (l) => l.toUpperCase())}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setShowNewRoleModal(false);
+                    setNewRoleName("");
+                    setNewRolePermissions([]);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleAddRole}
+                  disabled={!newRoleName.trim()}
+                >
+                  Add Role
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Success Dialog */}
       <SuccessDialog
         isOpen={showSuccess}
-        onClose={() => setShowSuccess(false)}
-        title="Employee Registered Successfully!"
+        onClose={() => {
+          setShowSuccess(false);
+          navigate("/employeelist");
+        }}
+        title="Employee Created Successfully!"
         message={successMessage}
-        buttonText="Register Another Employee"
+        buttonText="View Employees"
+        onConfirm={() => navigate("/employeelist")}
       />
 
       {/* Error Dialog */}
       <FailDialog
         isOpen={showError}
         onClose={() => setShowError(false)}
-        title="Failed to Register Employee"
+        title="Failed to Create Employee"
         message={errorMessage}
         buttonText="Try Again"
         onRetry={() => setShowError(false)}

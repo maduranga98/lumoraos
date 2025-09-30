@@ -172,7 +172,10 @@ const AddingOutlets = () => {
         toast.success("Outlet updated successfully!");
       } else {
         // Add new outlet
-        await addDoc(collection(db, "outlets"), outletData);
+        const docRef = await addDoc(collection(db, "outlets"), outletData);
+
+        // Update the same document with its ID
+        await updateDoc(docRef, { outletId: docRef.id });
         toast.success("Outlet added successfully!");
       }
 

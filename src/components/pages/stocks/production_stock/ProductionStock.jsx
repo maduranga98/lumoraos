@@ -550,6 +550,7 @@ const ProductionEntry = () => {
       for (const item of validItems) {
         const stockDocRef = doc(collection(db, "productStock"));
         await setDoc(stockDocRef, {
+          stockId: stockDocRef.id,
           productId: item.productId,
           productName: item.productName,
           productCode: item.productCode,
