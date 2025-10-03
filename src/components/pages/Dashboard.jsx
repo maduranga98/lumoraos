@@ -300,10 +300,10 @@ const Dashboard = () => {
             />
             <ActionButton
               emoji="📋"
-              label="Issue Materials"
-              onClick={() => navigate("/material-issue")}
+              label="Product Batches"
+              onClick={() => navigate("/production-batches")}
             />
-            <ActionButton
+            {/* <ActionButton
               emoji="🏷️"
               label="Define Products"
               onClick={() => navigate("/product-definition")}
@@ -318,7 +318,7 @@ const Dashboard = () => {
               label="Stock Reports"
               onClick={() => navigate("/product-stock")}
               disabled
-            />
+            /> */}
           </SectionCard>
 
           {/* Route Planning Section */}
@@ -381,7 +381,7 @@ const Dashboard = () => {
             <ActionButton
               emoji="🏪"
               label="Add Outlets"
-              onClick={() => navigate("/outlets-adding")}
+              onClick={() => navigate("/outlets")}
             />
             <ActionButton
               emoji="📊"
@@ -390,8 +390,8 @@ const Dashboard = () => {
             />
             <ActionButton
               emoji="📈"
-              label="Sales Reports"
-              onClick={() => navigate("/route-planing")}
+              label="Daily Loading"
+              onClick={() => navigate("/daily-loading")}
             />
           </SectionCard>
         </div>

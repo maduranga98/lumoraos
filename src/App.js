@@ -19,10 +19,11 @@ import ProductionEntry from "./components/pages/stocks/production_stock/Producti
 import AddingRoutes from "./components/pages/sales/RoutesPlanner/AddingRoutes";
 import AssignRoutes from "./components/pages/sales/RoutesPlanner/AssignRoutes";
 import RoutesPlanning from "./components/pages/sales/RoutesPlanner/RoutesPlaner";
-import AddingOutlets from "./components/pages/sales/Outlets/AddingOutlets";
-import OutletsStock from "./components/pages/sales/Outlets/OutletsStock";
 import Products from "./components/pages/products/Products";
 import ProductionBatches from "./components/pages/products/ProductionBatches";
+import OutletStockPage from "./components/pages/outlets/OutletStockPage";
+import OutletsPage from "./components/pages/outlets/OutletsPage";
+import DailyLoading from "./components/pages/sales/DailyLoading";
 
 const App = () => {
   return (
@@ -48,10 +49,11 @@ const App = () => {
       <Route path="/route-defining" element={<AddingRoutes />} />
       <Route path="/route-assiging" element={<AssignRoutes />} />
       <Route path="/route-planing" element={<RoutesPlanning />} />
-      <Route path="/outlets-adding" element={<AddingOutlets />} />
-      <Route path="/outlets-stock" element={<OutletsStock />} />
+      <Route path="/outlets" element={<OutletsPage />} />
+      <Route path="/outlets-stock" element={<OutletStockPage />} />
       <Route path="/products" element={<Products />} />
       <Route path="/production-batches" element={<ProductionBatches />} />
+      <Route path="/daily-loading" element={<DailyLoading />} />
     </Routes>
   );
 };

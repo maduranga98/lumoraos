@@ -2,29 +2,51 @@ import React, { useState } from "react";
 import {
   collection,
   addDoc,
-  updateDoc,
+  doc,
+  setDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import { toast } from "react-hot-toast";
-import Input from "../../../ui/InputField";
 import { db } from "../../../../services/firebase";
-import { MapPin, Plus, X, Save, Loader2, Info } from "lucide-react";
+import { useUser } from "../../../../contexts/userContext";
+import InputField from "../../../ui/InputField";
+import Button from "../../../ui/Button";
+import SuccessDialog from "../../../ui/SuccessDialog";
+import FailDialog from "../../../ui/FailDialog";
 
 const AddingRoutes = ({ onRouteAdded }) => {
-  const [name, setName] = useState("");
-  const [areas, setAreas] = useState([""]);
-  const [description, setDescription] = useState("");
-  const [estimatedDistance, setEstimatedDistance] = useState("");
-  const [estimatedTime, setEstimatedTime] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [showTips, setShowTips] = useState(false);
+  const { user: currentUser } = useUser();
 
-  // Add new area input
+  const [formData, setFormData] = useState({
+    name: "",
+    notes: "",
+  });
+
+  const [areas, setAreas] = useState([""]);
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [showError, setShowError] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const handleInputChange = (field) => (e) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: e.target.value,
+    }));
+
+    if (errors[field]) {
+      setErrors((prev) => ({
+        ...prev,
+        [field]: "",
+      }));
+    }
+  };
+
   const addAreaInput = () => {
     setAreas([...areas, ""]);
   };
 
-  // Remove area input
   const removeAreaInput = (index) => {
     if (areas.length > 1) {
       const newAreas = areas.filter((_, i) => i !== index);
@@ -32,145 +54,113 @@ const AddingRoutes = ({ onRouteAdded }) => {
     }
   };
 
-  // Update specific area
   const updateArea = (index, value) => {
     const newAreas = [...areas];
     newAreas[index] = value;
     setAreas(newAreas);
   };
 
-  // Reset form
-  const resetForm = () => {
-    setName("");
-    setAreas([""]);
-    setDescription("");
-    setEstimatedDistance("");
-    setEstimatedTime("");
-  };
-
-  // Validate form
   const validateForm = () => {
-    if (!name.trim()) {
-      toast.error("Route name is required");
-      return false;
+    const newErrors = {};
+
+    if (!formData.name.trim()) {
+      newErrors.name = "Route name is required";
     }
 
     const validAreas = areas.filter((area) => area.trim() !== "");
     if (validAreas.length === 0) {
-      toast.error("At least one area is required");
-      return false;
+      newErrors.areas = "At least one area is required";
     }
 
-    return true;
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  // Save route to Firebase
-  const handleSaveRoute = async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
     if (!validateForm()) return;
 
-    setIsLoading(true);
+    if (!currentUser?.userId) {
+      setErrorMessage("You must be logged in to add routes.");
+      setShowError(true);
+      return;
+    }
+
+    setLoading(true);
 
     try {
       const validAreas = areas.filter((area) => area.trim() !== "");
 
-      // Reference to the routes collection
-      const routesRef = collection(db, "routes");
+      const routeDocRef = doc(collection(db, "routes"));
+      const routeId = routeDocRef.id;
 
-      // Add the route document first to get the docId
-      const docRef = await addDoc(routesRef, {
-        name: name.trim(),
-        areas: validAreas,
-        description: description.trim(),
-        estimatedDistance: estimatedDistance
-          ? parseFloat(estimatedDistance)
-          : null,
-        estimatedTime: estimatedTime ? parseInt(estimatedTime) : null,
-        status: "active",
+      const routeData = {
+        routeId: routeId,
+        name: formData.name.trim(),
+        area_covered: validAreas,
+        notes: formData.notes.trim(),
         createdAt: serverTimestamp(),
+        createdBy: currentUser.userId,
         updatedAt: serverTimestamp(),
+      };
 
-        routeId: "",
+      await setDoc(routeDocRef, routeData);
+
+      setSuccessMessage(
+        `Route "${formData.name}" has been successfully created!`
+      );
+      setShowSuccess(true);
+
+      // Reset form
+      setFormData({
+        name: "",
+        notes: "",
       });
+      setAreas([""]);
 
-      // Update the document with the routeId (docId)
-      await updateDoc(docRef, {
-        routeId: docRef.id,
-        updatedAt: serverTimestamp(),
-      });
-
-      toast.success("Route saved successfully!");
-      console.log("Route saved with ID:", docRef.id);
-
-      // Reset form after successful save
-      resetForm();
-
-      // Call the callback if provided
       if (onRouteAdded) {
         onRouteAdded();
       }
     } catch (error) {
-      console.error("Error saving route:", error);
-      toast.error("Failed to save route. Please try again.");
+      console.error("Error adding route:", error);
+
+      let errorMsg = "Failed to add route. Please try again.";
+
+      if (error.code === "permission-denied") {
+        errorMsg = "You don't have permission to add routes.";
+      } else if (error.code === "network-request-failed") {
+        errorMsg = "Network error. Please check your connection.";
+      }
+
+      setErrorMessage(errorMsg);
+      setShowError(true);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-4">
-      {/* Compact Header */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="p-1.5 bg-blue-100 rounded-lg">
-              <MapPin className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Add New Route</h1>
-              <p className="text-sm text-gray-600">
-                Create delivery routes quickly
-              </p>
-            </div>
-          </div>
-
-          {/* Tips Toggle */}
-          <button
-            onClick={() => setShowTips(!showTips)}
-            className="flex items-center space-x-1 text-sm text-blue-600 hover:text-blue-700"
-          >
-            <Info className="h-4 w-4" />
-            <span>Tips</span>
-          </button>
+    <div className="max-w-2xl mx-auto">
+      <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            Add New Route
+          </h2>
+          <p className="text-gray-600">Create a delivery route</p>
         </div>
 
-        {/* Collapsible Tips */}
-        {showTips && (
-          <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="text-sm text-blue-700 space-y-1">
-              <p>• Use clear, descriptive names</p>
-              <p>• Add multiple areas for comprehensive coverage</p>
-              <p>• Include distance/time for better planning</p>
-            </div>
-          </div>
-        )}
-      </div>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <InputField
+            label="Route Name"
+            type="text"
+            placeholder="Enter route name"
+            value={formData.name}
+            onChange={handleInputChange("name")}
+            error={errors.name}
+            required
+          />
 
-      {/* Compact Form */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-        <div className="space-y-4">
-          {/* Route Name */}
-          <div>
-            <Input
-              label="Route Name"
-              type="text"
-              placeholder="e.g., Downtown Route, Zone A"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-
-          {/* Areas - Compact Layout */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Areas Covered <span className="text-red-500">*</span>
@@ -178,23 +168,20 @@ const AddingRoutes = ({ onRouteAdded }) => {
             <div className="space-y-2">
               {areas.map((area, index) => (
                 <div key={index} className="flex items-center space-x-2">
-                  <div className="flex-1">
-                    <input
-                      type="text"
-                      placeholder={`Area ${index + 1}`}
-                      value={area}
-                      onChange={(e) => updateArea(index, e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    placeholder={`Area ${index + 1}`}
+                    value={area}
+                    onChange={(e) => updateArea(index, e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
                   {areas.length > 1 && (
                     <button
                       type="button"
                       onClick={() => removeAreaInput(index)}
-                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Remove area"
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
                     >
-                      <X className="h-4 w-4" />
+                      Remove
                     </button>
                   )}
                 </div>
@@ -203,116 +190,63 @@ const AddingRoutes = ({ onRouteAdded }) => {
               <button
                 type="button"
                 onClick={addAreaInput}
-                className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 text-sm font-medium mt-2"
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
               >
-                <Plus className="h-4 w-4" />
-                <span>Add Area</span>
+                + Add Area
               </button>
             </div>
+            {errors.areas && (
+              <p className="text-sm text-red-600 mt-1">{errors.areas}</p>
+            )}
           </div>
 
-          {/* Route Details - Inline */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Input
-                label="Distance (km)"
-                type="number"
-                placeholder="25.5"
-                value={estimatedDistance}
-                onChange={(e) => setEstimatedDistance(e.target.value)}
-                step="0.1"
-                min="0"
-              />
-            </div>
-            <div>
-              <Input
-                label="Time (min)"
-                type="number"
-                placeholder="45"
-                value={estimatedTime}
-                onChange={(e) => setEstimatedTime(e.target.value)}
-                min="0"
-              />
-            </div>
-          </div>
-
-          {/* Description - Compact */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Description (Optional)
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Notes
             </label>
             <textarea
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-              rows="2"
-              placeholder="Route notes or special instructions..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Enter route notes (optional)"
+              value={formData.notes}
+              onChange={handleInputChange("notes")}
+              rows="3"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
           </div>
 
-          {/* Action Buttons - Compact */}
-          <div className="flex items-center justify-end space-x-2 pt-4 border-t border-gray-200">
-            <button
+          <div className="flex justify-end space-x-4 pt-4">
+            <Button
               type="button"
-              onClick={resetForm}
-              className="px-3 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
-              disabled={isLoading}
+              variant="outline"
+              onClick={() => {
+                setFormData({ name: "", notes: "" });
+                setAreas([""]);
+              }}
             >
               Reset
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveRoute}
-              disabled={isLoading}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-medium transition-colors text-sm"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Saving...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4" />
-                  <span>Save Route</span>
-                </>
-              )}
-            </button>
+            </Button>
+            <Button type="submit" loading={loading} size="lg">
+              {loading ? "Saving..." : "Save Route"}
+            </Button>
           </div>
-        </div>
+        </form>
       </div>
 
-      {/* Quick Preview */}
-      {(name || areas.some((area) => area.trim())) && (
-        <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Preview:</h3>
-          <div className="text-sm text-gray-600 space-y-1">
-            {name && (
-              <p>
-                <span className="font-medium">Route:</span> {name}
-              </p>
-            )}
-            {areas.filter((area) => area.trim()).length > 0 && (
-              <p>
-                <span className="font-medium">Areas:</span>{" "}
-                {areas.filter((area) => area.trim()).join(", ")}
-              </p>
-            )}
-            {estimatedDistance && (
-              <p>
-                <span className="font-medium">Distance:</span>{" "}
-                {estimatedDistance} km
-              </p>
-            )}
-            {estimatedTime && (
-              <p>
-                <span className="font-medium">Time:</span> {estimatedTime}{" "}
-                minutes
-              </p>
-            )}
-          </div>
-        </div>
-      )}
+      <SuccessDialog
+        isOpen={showSuccess}
+        onClose={() => setShowSuccess(false)}
+        title="Route Added Successfully!"
+        message={successMessage}
+        buttonText="Add Another Route"
+      />
+
+      <FailDialog
+        isOpen={showError}
+        onClose={() => setShowError(false)}
+        title="Failed to Add Route"
+        message={errorMessage}
+        buttonText="Try Again"
+        onRetry={() => setShowError(false)}
+      />
     </div>
   );
 };
