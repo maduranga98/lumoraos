@@ -3,12 +3,12 @@ import {
   collection,
   getDocs,
   doc,
-  updateDoc,
+  addDoc,
+  deleteDoc,
   serverTimestamp,
   where,
   query,
 } from "firebase/firestore";
-import { toast } from "react-hot-toast";
 import { db } from "../../../../services/firebase";
 import {
   Users,
@@ -24,14 +24,19 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
-  Clock,
-  Target,
 } from "lucide-react";
 import AddingRoutes from "./AddingRoutes";
 import { useUser } from "../../../../contexts/userContext";
+import Button from "../../../ui/Button";
+import SuccessDialog from "../../../ui/SuccessDialog";
+import FailDialog from "../../../ui/FailDialog";
+
 const AssignRoutes = () => {
+  const { user: currentUser } = useUser();
+
   const [salesReps, setSalesReps] = useState([]);
   const [routes, setRoutes] = useState([]);
+  const [assignments, setAssignments] = useState([]);
   const [selectedSalesRep, setSelectedSalesRep] = useState("");
   const [selectedRoute, setSelectedRoute] = useState("");
   const [loading, setLoading] = useState(false);
@@ -39,28 +44,30 @@ const AssignRoutes = () => {
   const [showAddRoute, setShowAddRoute] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedReps, setExpandedReps] = useState(new Set());
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(5);
-  const { user } = useUser();
-  // Fetch sales reps and routes on component mount
-  useEffect(() => {
-    fetchData();
-  }, [user]);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [showError, setShowError] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  // Fetch sales reps and routes from Firebase
+  useEffect(() => {
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser]);
+
   const fetchData = async () => {
     setFetchingData(true);
     try {
-      await Promise.all([fetchSalesReps(), fetchRoutes()]);
+      await Promise.all([fetchSalesReps(), fetchRoutes(), fetchAssignments()]);
     } catch (error) {
       console.error("Error fetching data:", error);
-      toast.error("Failed to load data");
+      setErrorMessage("Failed to load data");
+      setShowError(true);
     } finally {
       setFetchingData(false);
     }
   };
 
-  // Fetch sales representatives
   const fetchSalesReps = async () => {
     try {
       const salesRepsRef = collection(db, "users");
@@ -74,7 +81,7 @@ const AssignRoutes = () => {
         id: doc.id,
         ...doc.data(),
       }));
-      console.log(repsData);
+
       setSalesReps(repsData);
     } catch (error) {
       console.error("Error fetching sales reps:", error);
@@ -82,11 +89,9 @@ const AssignRoutes = () => {
     }
   };
 
-  // Fetch routes
   const fetchRoutes = async () => {
     try {
       const routesRef = collection(db, "routes");
-
       const snapshot = await getDocs(routesRef);
       const routesData = snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -100,125 +105,125 @@ const AssignRoutes = () => {
     }
   };
 
-  // Handle route assignment
+  const fetchAssignments = async () => {
+    try {
+      const assignmentsRef = collection(db, "route_assignments");
+      const snapshot = await getDocs(assignmentsRef);
+      const assignmentsData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      setAssignments(assignmentsData);
+    } catch (error) {
+      console.error("Error fetching assignments:", error);
+      throw error;
+    }
+  };
+
   const handleAssignRoute = async () => {
     if (!selectedSalesRep || !selectedRoute) {
-      toast.error("Please select both a sales representative and a route");
+      setErrorMessage("Please select both a sales representative and a route");
+      setShowError(true);
       return;
     }
 
     setLoading(true);
 
     try {
-      const selectedSalesRepData = salesReps.find(
-        (rep) => rep.id === selectedSalesRep
-      );
-      const selectedRouteData = routes.find(
-        (route) => route.id === selectedRoute
-      );
-      console.log(selectedSalesRep);
-
-      // Check if route is already assigned to this sales rep
-      const existingRoutes = selectedSalesRepData?.assignedRoutes || [];
-      const isAlreadyAssigned = existingRoutes.some(
-        (route) => route.routeId === selectedRoute
+      // Check if route is already assigned to this sales rep (active assignment)
+      const existingAssignment = assignments.find(
+        (assignment) =>
+          assignment.repId === selectedSalesRep &&
+          assignment.routeId === selectedRoute &&
+          assignment.assignedTo === null
       );
 
-      if (isAlreadyAssigned) {
-        toast.error(
+      if (existingAssignment) {
+        setErrorMessage(
           "This route is already assigned to the selected sales representative"
         );
+        setShowError(true);
+        setLoading(false);
         return;
       }
 
-      // Create new route assignment object with regular timestamp
-      const currentTimestamp = new Date();
-
-      const newRouteAssignment = {
+      const assignmentData = {
+        repId: selectedSalesRep,
         routeId: selectedRoute,
-        routeName: selectedRouteData?.name || "",
-        areas: selectedRouteData?.areas || [],
-        estimatedDistance: selectedRouteData?.estimatedDistance || null,
-        estimatedTime: selectedRouteData?.estimatedTime || null,
-        assignedAt: currentTimestamp,
-
-        status: "active",
+        assignedFrom: serverTimestamp(),
+        assignedTo: null,
       };
 
-      // Update sales rep with new assigned route in the assignedRoutes array
-      const salesRepRef = doc(db, "users", selectedSalesRep);
+      await addDoc(collection(db, "route_assignments"), assignmentData);
 
-      const updatedAssignedRoutes = [...existingRoutes, newRouteAssignment];
-
-      await updateDoc(salesRepRef, {
-        assignedRoutes: updatedAssignedRoutes,
-        updatedAt: serverTimestamp(),
-      });
-
-      toast.success("Route assigned successfully!");
+      setSuccessMessage("Route assigned successfully!");
+      setShowSuccess(true);
 
       // Reset selections
       setSelectedSalesRep("");
       setSelectedRoute("");
 
-      // Refresh data to show updated assignments
-      await fetchSalesReps();
+      // Refresh data
+      await fetchAssignments();
     } catch (error) {
       console.error("Error assigning route:", error);
-      toast.error("Failed to assign route. Please try again.");
+      setErrorMessage("Failed to assign route. Please try again.");
+      setShowError(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // Get assigned routes for a sales rep
   const getAssignedRoutes = (repId) => {
-    const rep = salesReps.find((rep) => rep.id === repId);
-    return rep?.assignedRoutes || [];
+    const activeAssignments = assignments.filter(
+      (assignment) =>
+        assignment.repId === repId && assignment.assignedTo === null
+    );
+
+    return activeAssignments.map((assignment) => {
+      const route = routes.find((r) => r.id === assignment.routeId);
+      return {
+        assignmentId: assignment.id,
+        routeId: assignment.routeId,
+        routeName: route?.name || "Unknown Route",
+        areas: route?.area_covered || [],
+        assignedFrom: assignment.assignedFrom,
+      };
+    });
   };
 
-  // Remove route assignment
-  const handleRemoveRoute = async (repId, routeId) => {
+  const handleRemoveRoute = async (assignmentId) => {
     setLoading(true);
 
     try {
-      const salesRepData = salesReps.find((rep) => rep.id === repId);
-      const updatedRoutes = salesRepData.assignedRoutes.filter(
-        (route) => route.routeId !== routeId
-      );
+      const assignmentRef = doc(db, "route_assignments", assignmentId);
 
-      const salesRepRef = doc(
-        db,
+      // Set assignedTo to current timestamp to mark as inactive
+      await deleteDoc(assignmentRef);
 
-        "salesReps",
-        repId
-      );
+      setSuccessMessage("Route removed successfully!");
+      setShowSuccess(true);
 
-      await updateDoc(salesRepRef, {
-        assignedRoutes: updatedRoutes,
-        updatedAt: serverTimestamp(),
-      });
-
-      toast.success("Route removed successfully!");
-      await fetchSalesReps();
+      await fetchAssignments();
     } catch (error) {
       console.error("Error removing route:", error);
-      toast.error("Failed to remove route. Please try again.");
+      setErrorMessage("Failed to remove route. Please try again.");
+      setShowError(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle adding new route success
   const handleRouteAdded = () => {
     setShowAddRoute(false);
     fetchRoutes();
-    toast.success(
+    setSuccessMessage(
       "Route added successfully! You can now assign it to sales representatives."
     );
+    setShowSuccess(true);
   };
 
-  // Toggle expanded state for a rep
   const toggleExpanded = (repId) => {
     const newExpanded = new Set(expandedReps);
     if (newExpanded.has(repId)) {
@@ -229,52 +234,40 @@ const AssignRoutes = () => {
     setExpandedReps(newExpanded);
   };
 
-  // Filter sales reps based on search term
   const filteredSalesReps = salesReps.filter(
     (rep) =>
-      rep.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      rep.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       rep.phoneNumber?.toLowerCase().includes(searchTerm.toLowerCase())
-    //   rep.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Paginate filtered results
-  const totalPages = Math.ceil(filteredSalesReps.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedReps = filteredSalesReps.slice(startIndex, endIndex);
+  const totalAssignedRoutes = assignments.filter(
+    (assignment) => assignment.assignedTo === null
+  ).length;
 
-  // Calculate statistics
-  const totalAssignedRoutes = salesReps.reduce(
-    (total, rep) => total + (rep.assignedRoutes?.length || 0),
-    0
-  );
   const repsWithRoutes = salesReps.filter(
-    (rep) => rep.assignedRoutes && rep.assignedRoutes.length > 0
+    (rep) => getAssignedRoutes(rep.id).length > 0
   ).length;
 
   if (fetchingData) {
     return (
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
-            <p className="text-gray-600">
-              Loading sales representatives and routes...
-            </p>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-3 text-gray-600">Loading...</span>
           </div>
         </div>
       </div>
     );
   }
 
-  // Show AddingRoute component if requested
   if (showAddRoute) {
     return (
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="mb-6">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <div className="max-w-7xl mx-auto">
           <button
             onClick={() => setShowAddRoute(false)}
-            className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 mb-4"
+            className="mb-6 flex items-center space-x-2 text-gray-600 hover:text-gray-800"
           >
             <svg
               className="h-5 w-5"
@@ -291,334 +284,248 @@ const AssignRoutes = () => {
             </svg>
             <span>Back to Assign Routes</span>
           </button>
+          <AddingRoutes onRouteAdded={handleRouteAdded} />
         </div>
-        <AddingRoutes onRouteAdded={handleRouteAdded} />
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center space-x-3 mb-2">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Navigation className="h-6 w-6 text-blue-600" />
-              </div>
-              <h1 className="text-2xl font-bold text-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
                 Assign Routes
               </h1>
+              <p className="text-gray-600 mt-1">
+                Assign delivery routes to sales representatives
+              </p>
             </div>
-            <p className="text-gray-600">
-              Assign delivery routes to your sales representatives
-            </p>
-          </div>
 
-          {/* Statistics Cards */}
-          <div className="hidden lg:flex space-x-4">
-            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-              <div className="flex items-center space-x-2">
-                <Users className="h-5 w-5 text-blue-600" />
-                <div>
-                  <p className="text-sm text-blue-600 font-medium">
-                    Total Reps
-                  </p>
-                  <p className="text-lg font-bold text-blue-700">
-                    {salesReps.length}
-                  </p>
+            {/* Statistics */}
+            <div className="hidden lg:flex space-x-4">
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <div className="text-2xl font-bold text-blue-600">
+                  {salesReps.length}
                 </div>
+                <div className="text-sm text-blue-800">Total Reps</div>
               </div>
-            </div>
-            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-              <div className="flex items-center space-x-2">
-                <Target className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="text-sm text-green-600 font-medium">
-                    Active Routes
-                  </p>
-                  <p className="text-lg font-bold text-green-700">
-                    {totalAssignedRoutes}
-                  </p>
+              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                <div className="text-2xl font-bold text-green-600">
+                  {totalAssignedRoutes}
                 </div>
+                <div className="text-sm text-green-800">Active Routes</div>
               </div>
-            </div>
-            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-              <div className="flex items-center space-x-2">
-                <RouteIcon className="h-5 w-5 text-purple-600" />
-                <div>
-                  <p className="text-sm text-purple-600 font-medium">
-                    Available Routes
-                  </p>
-                  <p className="text-lg font-bold text-purple-700">
-                    {routes.length}
-                  </p>
+              <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                <div className="text-2xl font-bold text-purple-600">
+                  {routes.length}
                 </div>
+                <div className="text-sm text-purple-800">Available Routes</div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Assignment Form - Fixed Position */}
-        <div className="xl:col-span-1">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sticky top-6">
-            <h2 className="text-lg font-semibold text-gray-800 mb-6 flex items-center">
-              <UserCheck className="h-5 w-5 mr-2 text-blue-600" />
-              Assign New Route
-            </h2>
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          {/* Assignment Form */}
+          <div className="xl:col-span-1">
+            <div className="bg-white rounded-2xl shadow-xl p-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-6">
+                Assign New Route
+              </h2>
 
-            <div className="space-y-4">
-              {/* Sales Rep Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Sales Representative{" "}
-                  <span className="text-red-500">*</span>
-                </label>
-                {salesReps.length > 0 ? (
-                  <select
-                    value={selectedSalesRep}
-                    onChange={(e) => setSelectedSalesRep(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                  >
-                    <option value="">Choose a sales representative</option>
-                    {salesReps.map((rep) => (
-                      <option key={rep.id} value={rep.id}>
-                        {rep.fullName} ({rep.assignedRoutes?.length || 0}{" "}
-                        routes)
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="flex items-center space-x-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <AlertCircle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
-                    <span className="text-sm text-yellow-700">
-                      No sales representatives found.
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Route Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Route <span className="text-red-500">*</span>
-                </label>
-                {routes.length > 0 ? (
-                  <select
-                    value={selectedRoute}
-                    onChange={(e) => setSelectedRoute(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                  >
-                    <option value="">Choose a route</option>
-                    {routes.map((route) => (
-                      <option key={route.id} value={route.id}>
-                        {route.name}
-                        {/* {route.areas?.length > 2 ? "..." : ""} */}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <AlertCircle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
-                      <span className="text-sm text-yellow-700">
-                        No routes found.
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="space-y-2 pt-4">
-                <button
-                  onClick={handleAssignRoute}
-                  disabled={loading || !selectedSalesRep || !selectedRoute}
-                  className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-medium transition-colors"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Assigning...</span>
-                    </>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Sales Representative <span className="text-red-500">*</span>
+                  </label>
+                  {salesReps.length > 0 ? (
+                    <select
+                      value={selectedSalesRep}
+                      onChange={(e) => setSelectedSalesRep(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    >
+                      <option value="">Choose a sales representative</option>
+                      {salesReps.map((rep) => (
+                        <option key={rep.id} value={rep.id}>
+                          {rep.fullName} ({getAssignedRoutes(rep.id).length}{" "}
+                          routes)
+                        </option>
+                      ))}
+                    </select>
                   ) : (
-                    <>
-                      <Save className="h-4 w-4" />
-                      <span>Assign Route</span>
-                    </>
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+                      No sales representatives found
+                    </div>
                   )}
-                </button>
+                </div>
 
-                <button
-                  onClick={() => setShowAddRoute(true)}
-                  className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Add New Route</span>
-                </button>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Route <span className="text-red-500">*</span>
+                  </label>
+                  {routes.length > 0 ? (
+                    <select
+                      value={selectedRoute}
+                      onChange={(e) => setSelectedRoute(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    >
+                      <option value="">Choose a route</option>
+                      {routes.map((route) => (
+                        <option key={route.id} value={route.id}>
+                          {route.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+                      No routes found
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2 pt-4">
+                  <Button
+                    onClick={handleAssignRoute}
+                    disabled={loading || !selectedSalesRep || !selectedRoute}
+                    loading={loading}
+                    className="w-full"
+                  >
+                    Assign Route
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowAddRoute(true)}
+                    className="w-full"
+                  >
+                    Add New Route
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Current Assignments - Scrollable */}
-        <div className="xl:col-span-2">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            {/* Header with Search */}
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-800 flex items-center">
-                  <RouteIcon className="h-5 w-5 mr-2 text-green-600" />
-                  Route Assignments ({filteredSalesReps.length})
-                </h2>
-                <div className="text-sm text-gray-500">
-                  {repsWithRoutes} of {salesReps.length} reps have routes
+          {/* Assignments List */}
+          <div className="xl:col-span-2">
+            <div className="bg-white rounded-2xl shadow-xl">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Route Assignments ({filteredSalesReps.length})
+                  </h2>
+                  <div className="text-sm text-gray-500">
+                    {repsWithRoutes} of {salesReps.length} reps have routes
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search sales representatives..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
                 </div>
               </div>
 
-              {/* Search Bar */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search sales representatives..."
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setCurrentPage(1); // Reset to first page when searching
-                  }}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-            </div>
+              <div className="p-6">
+                {filteredSalesReps.length > 0 ? (
+                  <div className="space-y-4">
+                    {filteredSalesReps.map((rep) => {
+                      const assignedRoutes = getAssignedRoutes(rep.id);
+                      const isExpanded = expandedReps.has(rep.id);
 
-            {/* Sales Reps List */}
-            <div className="p-6">
-              {paginatedReps.length > 0 ? (
-                <div className="space-y-4">
-                  {paginatedReps.map((rep) => {
-                    const assignedRoutes = getAssignedRoutes(rep.id);
-                    const isExpanded = expandedReps.has(rep.id);
-
-                    return (
-                      <div
-                        key={rep.id}
-                        className="border border-gray-200 rounded-lg overflow-hidden"
-                      >
-                        {/* Rep Header */}
-                        <div className="p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                                <Users className="h-5 w-5 text-blue-600" />
-                              </div>
-                              <div>
-                                <h3 className="font-medium text-gray-900">
-                                  {rep.fullName}
-                                </h3>
-                                <div className="flex items-center space-x-3 text-sm text-gray-500">
-                                  {rep.phone && <span>📞 {rep.phone}</span>}
-                                  {rep.email && <span>📧 {rep.email}</span>}
+                      return (
+                        <div
+                          key={rep.id}
+                          className="border border-gray-200 rounded-lg overflow-hidden"
+                        >
+                          <div className="p-4 bg-gray-50 hover:bg-gray-100">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                  <Users className="h-5 w-5 text-blue-600" />
+                                </div>
+                                <div>
+                                  <h3 className="font-medium text-gray-900">
+                                    {rep.fullName}
+                                  </h3>
+                                  <div className="text-sm text-gray-500">
+                                    {rep.phoneNumber && `📞 ${rep.phoneNumber}`}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
 
-                            <div className="flex items-center space-x-3">
-                              {assignedRoutes.length > 0 ? (
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-700">
-                                  {assignedRoutes.length} route
-                                  {assignedRoutes.length > 1 ? "s" : ""}
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
-                                  No routes
-                                </span>
-                              )}
+                              <div className="flex items-center space-x-3">
+                                {assignedRoutes.length > 0 ? (
+                                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-700">
+                                    {assignedRoutes.length} route
+                                    {assignedRoutes.length > 1 ? "s" : ""}
+                                  </span>
+                                ) : (
+                                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
+                                    No routes
+                                  </span>
+                                )}
 
-                              {assignedRoutes.length > 0 && (
-                                <button
-                                  onClick={() => toggleExpanded(rep.id)}
-                                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                                >
-                                  {isExpanded ? (
-                                    <ChevronUp className="h-5 w-5" />
-                                  ) : (
-                                    <ChevronDown className="h-5 w-5" />
-                                  )}
-                                </button>
-                              )}
+                                {assignedRoutes.length > 0 && (
+                                  <button
+                                    onClick={() => toggleExpanded(rep.id)}
+                                    className="text-gray-400 hover:text-gray-600"
+                                  >
+                                    {isExpanded ? (
+                                      <ChevronUp className="h-5 w-5" />
+                                    ) : (
+                                      <ChevronDown className="h-5 w-5" />
+                                    )}
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Assigned Routes (Collapsible) */}
-                        {assignedRoutes.length > 0 && isExpanded && (
-                          <div className="p-4 bg-white border-t border-gray-200">
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                              {assignedRoutes.map((route) => (
-                                <div
-                                  key={route.routeId}
-                                  className="p-3 bg-gray-50 rounded-lg"
-                                >
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1 min-w-0">
+                          {assignedRoutes.length > 0 && isExpanded && (
+                            <div className="p-4 bg-white border-t border-gray-200">
+                              <div className="space-y-3">
+                                {assignedRoutes.map((route) => (
+                                  <div
+                                    key={route.assignmentId}
+                                    className="p-3 bg-gray-50 rounded-lg flex items-start justify-between"
+                                  >
+                                    <div className="flex-1">
                                       <div className="flex items-center space-x-2 mb-2">
-                                        <MapPin className="h-4 w-4 text-green-600 flex-shrink-0" />
-                                        <span className="font-medium text-gray-900 truncate">
+                                        <MapPin className="h-4 w-4 text-green-600" />
+                                        <span className="font-medium text-gray-900">
                                           {route.routeName}
                                         </span>
                                       </div>
 
-                                      <div className="space-y-1 text-xs text-gray-500">
+                                      <div className="text-xs text-gray-500">
                                         <p>
                                           <span className="font-medium">
                                             Areas:
                                           </span>{" "}
-                                          {route.areas?.length > 3
-                                            ? `${route.areas
-                                                .slice(0, 3)
-                                                .join(", ")}... (+${
-                                                route.areas.length - 3
-                                              } more)`
-                                            : route.areas?.join(", ") ||
-                                              "No areas specified"}
+                                          {route.areas.length > 0
+                                            ? route.areas.join(", ")
+                                            : "No areas"}
                                         </p>
-
-                                        {route.estimatedDistance && (
-                                          <p>
-                                            <span className="font-medium">
-                                              Distance:
-                                            </span>{" "}
-                                            {route.estimatedDistance} km
-                                          </p>
-                                        )}
-
-                                        {route.estimatedTime && (
-                                          <p className="flex items-center space-x-1">
-                                            <Clock className="h-3 w-3" />
-                                            <span>
-                                              {route.estimatedTime} min
-                                            </span>
-                                          </p>
-                                        )}
-
-                                        {route.assignedAt && (
-                                          <p>
+                                        {route.assignedFrom && (
+                                          <p className="mt-1">
                                             <span className="font-medium">
                                               Assigned:
                                             </span>{" "}
-                                            {route.assignedAt instanceof Date
-                                              ? route.assignedAt.toLocaleDateString()
-                                              : route.assignedAt.seconds
-                                              ? new Date(
-                                                  route.assignedAt.seconds *
-                                                    1000
-                                                ).toLocaleDateString()
+                                            {route.assignedFrom?.toDate
+                                              ? route.assignedFrom
+                                                  .toDate()
+                                                  .toLocaleDateString()
                                               : new Date(
-                                                  route.assignedAt
+                                                  route.assignedFrom
                                                 ).toLocaleDateString()}
                                           </p>
                                         )}
@@ -627,88 +534,54 @@ const AssignRoutes = () => {
 
                                     <button
                                       onClick={() =>
-                                        handleRemoveRoute(rep.id, route.routeId)
+                                        handleRemoveRoute(route.assignmentId)
                                       }
                                       disabled={loading}
-                                      className="text-red-500 hover:text-red-700 p-1 rounded transition-colors flex-shrink-0 ml-2"
+                                      className="text-red-500 hover:text-red-700 p-1 rounded"
                                       title="Remove route"
                                     >
                                       <X className="h-4 w-4" />
                                     </button>
                                   </div>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500 mb-2">
-                    {searchTerm
-                      ? "No sales representatives found matching your search"
-                      : "No sales representatives found"}
-                  </p>
-                  <p className="text-sm text-gray-400">
-                    {searchTerm
-                      ? "Try adjusting your search terms"
-                      : "Add sales representatives to assign routes"}
-                  </p>
-                </div>
-              )}
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
-                  <div className="text-sm text-gray-700">
-                    Showing {startIndex + 1} to{" "}
-                    {Math.min(endIndex, filteredSalesReps.length)} of{" "}
-                    {filteredSalesReps.length} results
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => setCurrentPage(currentPage - 1)}
-                      disabled={currentPage === 1}
-                      className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Previous
-                    </button>
-
-                    <div className="flex items-center space-x-1">
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                        (page) => (
-                          <button
-                            key={page}
-                            onClick={() => setCurrentPage(page)}
-                            className={`px-3 py-1 text-sm rounded ${
-                              currentPage === page
-                                ? "bg-blue-600 text-white"
-                                : "border border-gray-300 hover:bg-gray-50"
-                            }`}
-                          >
-                            {page}
-                          </button>
-                        )
-                      )}
-                    </div>
-
-                    <button
-                      onClick={() => setCurrentPage(currentPage + 1)}
-                      disabled={currentPage === totalPages}
-                      className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Next
-                    </button>
+                ) : (
+                  <div className="text-center py-12">
+                    <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">
+                      {searchTerm
+                        ? "No sales representatives found"
+                        : "No sales representatives available"}
+                    </p>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>
+
+        <SuccessDialog
+          isOpen={showSuccess}
+          onClose={() => setShowSuccess(false)}
+          title="Success!"
+          message={successMessage}
+          buttonText="Continue"
+        />
+
+        <FailDialog
+          isOpen={showError}
+          onClose={() => setShowError(false)}
+          title="Error"
+          message={errorMessage}
+          buttonText="Try Again"
+          onRetry={() => setShowError(false)}
+        />
       </div>
     </div>
   );
