@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   collection,
   getDocs,
-  doc,
   addDoc,
   serverTimestamp,
   query,
@@ -60,13 +59,6 @@ const ExpensesLog = () => {
     }
   }, [authLoading, currentUser, navigate]);
 
-  useEffect(() => {
-    if (currentUser) {
-      loadVehicles();
-      loadAllExpenses();
-    }
-  }, [currentUser]);
-
   // Filter expenses
   useEffect(() => {
     let filtered = expenses;
@@ -95,7 +87,9 @@ const ExpensesLog = () => {
     }
   };
 
-  const loadAllExpenses = async () => {
+  const loadAllExpenses = useCallback(async () => {
+    if (vehicles.length === 0) return; // Guard clause
+
     try {
       const allExpenses = [];
 
@@ -128,8 +122,14 @@ const ExpensesLog = () => {
       setErrorMessage("Failed to load expenses. Please try again.");
       setShowError(true);
     }
-  };
+  }, [vehicles]);
 
+  useEffect(() => {
+    if (currentUser) {
+      loadVehicles();
+      loadAllExpenses();
+    }
+  }, [currentUser, loadAllExpenses]);
   const handleInputChange = (field) => (e) => {
     let value = e.target.value;
 

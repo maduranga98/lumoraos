@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   collection,
   getDocs,
@@ -10,21 +10,7 @@ import {
   query,
 } from "firebase/firestore";
 import { db } from "../../../../services/firebase";
-import {
-  Users,
-  MapPin,
-  Plus,
-  Save,
-  Loader2,
-  Route as RouteIcon,
-  UserCheck,
-  AlertCircle,
-  Navigation,
-  X,
-  Search,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import { Users, MapPin, X, Search, ChevronDown, ChevronUp } from "lucide-react";
 import AddingRoutes from "./AddingRoutes";
 import { useUser } from "../../../../contexts/userContext";
 import Button from "../../../ui/Button";
@@ -49,26 +35,7 @@ const AssignRoutes = () => {
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  useEffect(() => {
-    if (currentUser) {
-      fetchData();
-    }
-  }, [currentUser]);
-
-  const fetchData = async () => {
-    setFetchingData(true);
-    try {
-      await Promise.all([fetchSalesReps(), fetchRoutes(), fetchAssignments()]);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      setErrorMessage("Failed to load data");
-      setShowError(true);
-    } finally {
-      setFetchingData(false);
-    }
-  };
-
-  const fetchSalesReps = async () => {
+  const fetchSalesReps = useCallback(async () => {
     try {
       const salesRepsRef = collection(db, "users");
       const salesRepsQuery = query(
@@ -87,9 +54,9 @@ const AssignRoutes = () => {
       console.error("Error fetching sales reps:", error);
       throw error;
     }
-  };
+  }, []);
 
-  const fetchRoutes = async () => {
+  const fetchRoutes = useCallback(async () => {
     try {
       const routesRef = collection(db, "routes");
       const snapshot = await getDocs(routesRef);
@@ -103,9 +70,9 @@ const AssignRoutes = () => {
       console.error("Error fetching routes:", error);
       throw error;
     }
-  };
+  }, []);
 
-  const fetchAssignments = async () => {
+  const fetchAssignments = useCallback(async () => {
     try {
       const assignmentsRef = collection(db, "route_assignments");
       const snapshot = await getDocs(assignmentsRef);
@@ -119,7 +86,26 @@ const AssignRoutes = () => {
       console.error("Error fetching assignments:", error);
       throw error;
     }
-  };
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    setFetchingData(true);
+    try {
+      await Promise.all([fetchSalesReps(), fetchRoutes(), fetchAssignments()]);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      setErrorMessage("Failed to load data");
+      setShowError(true);
+    } finally {
+      setFetchingData(false);
+    }
+  }, [fetchSalesReps, fetchRoutes, fetchAssignments]);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser, fetchData]);
 
   const handleAssignRoute = async () => {
     if (!selectedSalesRep || !selectedRoute) {

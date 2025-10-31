@@ -26,7 +26,6 @@ const ProtectedRoute = ({
   showUnauthorized = false,
 }) => {
   const {
-    user,
     loading,
     isAuthenticated,
     hasPermission,

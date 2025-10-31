@@ -147,7 +147,12 @@ const ProductionBatches = ({ editBatch = null }) => {
         }));
       }
     }
-  }, [formData.productId, formData.productionDate, products]);
+  }, [
+    formData.productId,
+    formData.productionDate,
+    formData.sellingPrice,
+    products,
+  ]);
 
   const loadProducts = async () => {
     try {

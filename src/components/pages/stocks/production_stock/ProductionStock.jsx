@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   collection,
   getDocs,
   doc,
   setDoc,
   addDoc,
-  updateDoc,
   serverTimestamp,
   query,
   orderBy,
@@ -104,13 +103,6 @@ const ProductionEntry = () => {
     }
   }, [currentUser]);
 
-  // Auto-generate batch numbers
-  useEffect(() => {
-    if (formData.productionDate) {
-      generateBatchNumber();
-    }
-  }, [formData.productionDate]);
-
   // Filter productions
   useEffect(() => {
     let filtered = productions;
@@ -180,7 +172,7 @@ const ProductionEntry = () => {
     }
   };
 
-  const generateBatchNumber = () => {
+  const generateBatchNumber = useCallback(() => {
     const date = new Date(formData.productionDate);
     const year = date.getFullYear().toString().slice(-2);
     const month = (date.getMonth() + 1).toString().padStart(2, "0");
@@ -194,7 +186,13 @@ const ProductionEntry = () => {
       ...prev,
       productionBatch: batchNumber,
     }));
-  };
+  }, [formData.productionDate]);
+  // Auto-generate batch numbers
+  useEffect(() => {
+    if (formData.productionDate) {
+      generateBatchNumber();
+    }
+  }, [formData.productionDate, generateBatchNumber]);
 
   const handleInputChange = (field) => (e) => {
     setFormData((prev) => ({
