@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   collection,
   getDocs,
-  doc,
   addDoc,
   serverTimestamp,
   query,
@@ -59,63 +58,7 @@ const DailyLoading = () => {
     }
   }, [authLoading, currentUser, navigate]);
 
-  useEffect(() => {
-    if (currentUser) {
-      fetchAllData();
-    }
-  }, [currentUser]);
-
-  useEffect(() => {
-    if (formData.repId) {
-      fetchAssignedRoutes();
-    } else {
-      setRoutes([]);
-    }
-  }, [formData.repId]);
-
-  useEffect(() => {
-    if (currentItem.productId) {
-      fetchBatchesByProduct(currentItem.productId);
-    } else {
-      setBatches([]);
-      setSelectedBatch(null);
-    }
-  }, [currentItem.productId]);
-
-  useEffect(() => {
-    if (currentItem.batchId) {
-      const batch = batches.find((b) => b.id === currentItem.batchId);
-      setSelectedBatch(batch);
-      if (batch) {
-        setCurrentItem((prev) => ({
-          ...prev,
-          price: batch.sellingPrice || "",
-        }));
-      }
-    } else {
-      setSelectedBatch(null);
-    }
-  }, [currentItem.batchId, batches]);
-
-  const fetchAllData = async () => {
-    setFetchingData(true);
-    try {
-      await Promise.all([
-        fetchEmployees(),
-        fetchVehicles(),
-        fetchProducts(),
-        fetchAssignments(),
-      ]);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      setErrorMessage("Failed to load data");
-      setShowError(true);
-    } finally {
-      setFetchingData(false);
-    }
-  };
-
-  const fetchEmployees = async () => {
+  const fetchEmployees = useCallback(async () => {
     try {
       const employeesSnapshot = await getDocs(collection(db, "users"));
       const employeesData = employeesSnapshot.docs.map((doc) => ({
@@ -127,9 +70,9 @@ const DailyLoading = () => {
       console.error("Error fetching employees:", error);
       throw error;
     }
-  };
+  }, []);
 
-  const fetchVehicles = async () => {
+  const fetchVehicles = useCallback(async () => {
     try {
       const vehiclesSnapshot = await getDocs(collection(db, "vehicles"));
       const vehiclesData = vehiclesSnapshot.docs.map((doc) => ({
@@ -141,9 +84,9 @@ const DailyLoading = () => {
       console.error("Error fetching vehicles:", error);
       throw error;
     }
-  };
+  }, []);
 
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     try {
       const productsSnapshot = await getDocs(collection(db, "products"));
       const productsData = productsSnapshot.docs.map((doc) => ({
@@ -155,9 +98,9 @@ const DailyLoading = () => {
       console.error("Error fetching products:", error);
       throw error;
     }
-  };
+  }, []);
 
-  const fetchAssignments = async () => {
+  const fetchAssignments = useCallback(async () => {
     try {
       const assignmentsSnapshot = await getDocs(
         collection(db, "route_assignments")
@@ -171,9 +114,9 @@ const DailyLoading = () => {
       console.error("Error fetching assignments:", error);
       throw error;
     }
-  };
+  }, []);
 
-  const fetchAssignedRoutes = async () => {
+  const fetchAssignedRoutes = useCallback(async () => {
     try {
       const activeAssignments = assignments.filter(
         (assignment) =>
@@ -198,9 +141,56 @@ const DailyLoading = () => {
     } catch (error) {
       console.error("Error fetching assigned routes:", error);
     }
-  };
+  }, [formData.repId, assignments]);
 
-  const fetchBatchesByProduct = async (productId) => {
+  const fetchAllData = useCallback(async () => {
+    setFetchingData(true);
+    try {
+      await Promise.all([
+        fetchEmployees(),
+        fetchVehicles(),
+        fetchProducts(),
+        fetchAssignments(),
+      ]);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      setErrorMessage("Failed to load data");
+      setShowError(true);
+    } finally {
+      setFetchingData(false);
+    }
+  }, [fetchEmployees, fetchVehicles, fetchProducts, fetchAssignments]);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchAllData();
+    }
+  }, [currentUser, fetchAllData]);
+
+  useEffect(() => {
+    if (currentItem.batchId) {
+      const batch = batches.find((b) => b.id === currentItem.batchId);
+      setSelectedBatch(batch);
+      if (batch) {
+        setCurrentItem((prev) => ({
+          ...prev,
+          price: batch.sellingPrice || "",
+        }));
+      }
+    } else {
+      setSelectedBatch(null);
+    }
+  }, [currentItem.batchId, batches]);
+
+  useEffect(() => {
+    if (formData.repId) {
+      fetchAssignedRoutes();
+    } else {
+      setRoutes([]);
+    }
+  }, [formData.repId, fetchAssignedRoutes]);
+
+  const fetchBatchesByProduct = useCallback(async (productId) => {
     try {
       const batchesRef = collection(db, "production_batches");
       const batchesQuery = query(
@@ -224,7 +214,16 @@ const DailyLoading = () => {
       setErrorMessage("Failed to load batches");
       setShowError(true);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (currentItem.productId) {
+      fetchBatchesByProduct(currentItem.productId);
+    } else {
+      setBatches([]);
+      setSelectedBatch(null);
+    }
+  }, [currentItem.productId, fetchBatchesByProduct]);
 
   const handleInputChange = (field) => (e) => {
     setFormData((prev) => ({

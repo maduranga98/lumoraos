@@ -1,15 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   collection,
   getDocs,
   doc,
   setDoc,
   addDoc,
-  updateDoc,
   serverTimestamp,
   query,
   orderBy,
-  where,
 } from "firebase/firestore";
 import { db } from "../../../../services/firebase";
 import { useUser } from "../../../../contexts/userContext";
@@ -57,8 +55,6 @@ const MaterialIssue = () => {
 
   // View state
   const [showForm, setShowForm] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterDepartment, setFilterDepartment] = useState("all");
 
   const departments = [
     "Production",
@@ -95,11 +91,6 @@ const MaterialIssue = () => {
       loadMaterialIssues();
     }
   }, [currentUser]);
-
-  // Calculate stock levels
-  useEffect(() => {
-    calculateMaterialStock();
-  }, [availableMaterials]);
 
   const loadAvailableMaterials = async () => {
     try {
@@ -162,7 +153,7 @@ const MaterialIssue = () => {
     }
   };
 
-  const calculateMaterialStock = async () => {
+  const calculateMaterialStock = useCallback(async () => {
     try {
       // Calculate issued quantities
       const issuesQuery = query(collection(db, "materialIssues"));
@@ -207,8 +198,12 @@ const MaterialIssue = () => {
     } catch (error) {
       console.error("Error calculating stock:", error);
     }
-  };
+  }, [availableMaterials]);
 
+  // Calculate stock levels
+  useEffect(() => {
+    calculateMaterialStock();
+  }, [availableMaterials, calculateMaterialStock]);
   const handleInputChange = (field) => (e) => {
     setFormData((prev) => ({
       ...prev,

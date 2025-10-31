@@ -463,15 +463,15 @@ const Purchases = ({ editPurchase = null }) => {
     });
   };
 
-  const getSupplierName = (supplierId) => {
-    const supplier = suppliers.find((s) => s.id === supplierId);
-    return supplier?.name || "Unknown Supplier";
-  };
+  // const getSupplierName = (supplierId) => {
+  //   const supplier = suppliers.find((s) => s.id === supplierId);
+  //   return supplier?.name || "Unknown Supplier";
+  // };
 
-  const getMaterialName = (materialId) => {
-    const material = materials.find((m) => m.id === materialId);
-    return material?.name || "Unknown Material";
-  };
+  // const getMaterialName = (materialId) => {
+  //   const material = materials.find((m) => m.id === materialId);
+  //   return material?.name || "Unknown Material";
+  // };
 
   if (authLoading) {
     return (

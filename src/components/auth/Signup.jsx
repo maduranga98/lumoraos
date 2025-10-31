@@ -397,13 +397,13 @@ const Signup = () => {
               />
               <span className="ml-2 text-sm text-gray-600">
                 I agree to the{" "}
-                <a href="#" className="text-blue-600 hover:underline">
+                {/* <a href="#" className="text-blue-600 hover:underline">
                   Terms of Service
                 </a>{" "}
                 and{" "}
                 <a href="#" className="text-blue-600 hover:underline">
                   Privacy Policy
-                </a>
+                </a> */}
               </span>
             </label>
             {errors.terms && (

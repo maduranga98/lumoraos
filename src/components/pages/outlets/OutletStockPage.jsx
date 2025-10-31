@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../../services/firebase";
 import AddOutletStock from "./AddOutletStock";
@@ -17,12 +17,6 @@ const OutletStockPage = () => {
     fetchOutlets();
     fetchProductsAndBatches();
   }, []);
-
-  useEffect(() => {
-    if (selectedOutlet) {
-      fetchOutletStock();
-    }
-  }, [selectedOutlet]);
 
   const fetchOutlets = async () => {
     setLoadingOutlets(true);
@@ -65,7 +59,7 @@ const OutletStockPage = () => {
     }
   };
 
-  const fetchOutletStock = async () => {
+  const fetchOutletStock = useCallback(async () => {
     if (!selectedOutlet) return;
 
     setLoading(true);
@@ -96,7 +90,13 @@ const OutletStockPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedOutlet, products, batches]);
+
+  useEffect(() => {
+    if (selectedOutlet) {
+      fetchOutletStock();
+    }
+  }, [selectedOutlet, fetchOutletStock]);
 
   const selectedOutletData = outlets.find((o) => o.id === selectedOutlet);
 

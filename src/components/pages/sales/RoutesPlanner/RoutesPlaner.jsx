@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   collection,
   getDocs,
@@ -12,9 +12,7 @@ import {
 import { db } from "../../../../services/firebase";
 import {
   Calendar,
-  Users,
   MapPin,
-  Save,
   Loader2,
   ChevronLeft,
   ChevronRight,
@@ -57,32 +55,7 @@ const RoutesPlanning = () => {
     },
   ];
 
-  useEffect(() => {
-    if (currentUser) {
-      fetchData();
-    }
-  }, [currentUser]);
-
-  useEffect(() => {
-    if (selectedRep) {
-      fetchMonthlyPlan();
-    }
-  }, [selectedRep, selectedMonth, selectedYear]);
-
-  const fetchData = async () => {
-    setFetchingData(true);
-    try {
-      await Promise.all([fetchSalesReps(), fetchRoutes(), fetchAssignments()]);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      setErrorMessage("Failed to load data");
-      setShowError(true);
-    } finally {
-      setFetchingData(false);
-    }
-  };
-
-  const fetchSalesReps = async () => {
+  const fetchSalesReps = useCallback(async () => {
     try {
       const salesRepsRef = collection(db, "users");
       const salesRepsQuery = query(
@@ -100,9 +73,9 @@ const RoutesPlanning = () => {
       console.error("Error fetching sales reps:", error);
       throw error;
     }
-  };
+  }, []);
 
-  const fetchRoutes = async () => {
+  const fetchRoutes = useCallback(async () => {
     try {
       const routesRef = collection(db, "routes");
       const snapshot = await getDocs(routesRef);
@@ -116,9 +89,9 @@ const RoutesPlanning = () => {
       console.error("Error fetching routes:", error);
       throw error;
     }
-  };
+  }, []);
 
-  const fetchAssignments = async () => {
+  const fetchAssignments = useCallback(async () => {
     try {
       const assignmentsRef = collection(db, "route_assignments");
       const snapshot = await getDocs(assignmentsRef);
@@ -132,7 +105,20 @@ const RoutesPlanning = () => {
       console.error("Error fetching assignments:", error);
       throw error;
     }
-  };
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    setFetchingData(true);
+    try {
+      await Promise.all([fetchSalesReps(), fetchRoutes(), fetchAssignments()]);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      setErrorMessage("Failed to load data");
+      setShowError(true);
+    } finally {
+      setFetchingData(false);
+    }
+  }, [fetchSalesReps, fetchRoutes, fetchAssignments]);
 
   const getAssignedRoutes = (repId) => {
     const activeAssignments = assignments.filter(
@@ -150,7 +136,7 @@ const RoutesPlanning = () => {
     });
   };
 
-  const fetchMonthlyPlan = async () => {
+  const fetchMonthlyPlan = useCallback(async () => {
     if (!selectedRep) return;
 
     setLoading(true);
@@ -188,7 +174,19 @@ const RoutesPlanning = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedRep, selectedMonth, selectedYear]);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser, fetchData]);
+
+  useEffect(() => {
+    if (selectedRep) {
+      fetchMonthlyPlan();
+    }
+  }, [selectedRep, selectedMonth, selectedYear, fetchMonthlyPlan]);
 
   const handleRepSelection = (repId) => {
     setSelectedRep(repId);
@@ -284,11 +282,6 @@ const RoutesPlanning = () => {
       "December",
     ];
     return months[month];
-  };
-
-  const getDayTypeStyle = (dayType) => {
-    const type = dayTypes.find((t) => t.value === dayType);
-    return type ? type.color : "bg-gray-100 text-gray-800";
   };
 
   const navigateMonth = (direction) => {

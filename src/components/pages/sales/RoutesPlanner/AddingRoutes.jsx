@@ -1,11 +1,5 @@
 import React, { useState } from "react";
-import {
-  collection,
-  addDoc,
-  doc,
-  setDoc,
-  serverTimestamp,
-} from "firebase/firestore";
+import { collection, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../../services/firebase";
 import { useUser } from "../../../../contexts/userContext";
 import InputField from "../../../ui/InputField";
