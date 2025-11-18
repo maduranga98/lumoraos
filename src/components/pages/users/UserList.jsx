@@ -67,8 +67,10 @@ const UserList = () => {
       filtered = filtered.filter(
         (emp) =>
           emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          emp.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           emp.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           emp.phone?.includes(searchTerm) ||
+          emp.phoneNumber?.includes(searchTerm) ||
           emp.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           emp.employeeId?.toLowerCase().includes(searchTerm.toLowerCase())
       );
@@ -227,7 +229,7 @@ const UserList = () => {
       });
 
       setSuccessMessage(
-        `Password for ${selectedEmployee.name} has been changed successfully!\n\nNew Password: ${newPassword}\n\n⚠️ Please save this password securely!`
+        `Password for ${selectedEmployee.name || selectedEmployee.fullName} has been changed successfully!\n\nNew Password: ${newPassword}\n\n⚠️ Please save this password securely!`
       );
       setShowSuccess(true);
       setShowPasswordModal(false);
@@ -485,8 +487,8 @@ const UserList = () => {
                                 : "bg-gray-400"
                             }`}
                           >
-                            {employee.name
-                              ? employee.name
+                            {(employee.name || employee.fullName)
+                              ? (employee.name || employee.fullName)
                                   .split(" ")
                                   .map((n) => n[0])
                                   .join("")
@@ -496,7 +498,7 @@ const UserList = () => {
                           </div>
                           <div className="ml-4">
                             <div className="text-sm font-semibold text-gray-900">
-                              {employee.name || "Unnamed Employee"}
+                              {employee.name || employee.fullName || "Unnamed Employee"}
                             </div>
                             <div className="text-sm text-gray-500">
                               {employee.employeeId}
@@ -524,7 +526,7 @@ const UserList = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {employee.phone || "No phone"}
+                          {employee.phone || employee.phoneNumber || "No phone"}
                         </div>
                         <div className="text-sm text-gray-500">
                           {employee.email || "No email"}
@@ -614,8 +616,8 @@ const UserList = () => {
                           : "bg-gray-400"
                       }`}
                     >
-                      {selectedEmployee.name
-                        ? selectedEmployee.name
+                      {(selectedEmployee.name || selectedEmployee.fullName)
+                        ? (selectedEmployee.name || selectedEmployee.fullName)
                             .split(" ")
                             .map((n) => n[0])
                             .join("")
@@ -625,7 +627,7 @@ const UserList = () => {
                     </div>
                     <div className="ml-5">
                       <h2 className="text-2xl font-bold text-gray-900">
-                        {selectedEmployee.name || "Unnamed Employee"}
+                        {selectedEmployee.name || selectedEmployee.fullName || "Unnamed Employee"}
                       </h2>
                       <p className="text-gray-600">
                         {selectedEmployee.employeeId}
@@ -666,7 +668,7 @@ const UserList = () => {
                         Phone
                       </span>
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {selectedEmployee.phone || "N/A"}
+                        {selectedEmployee.phone || selectedEmployee.phoneNumber || "N/A"}
                       </p>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-4">
@@ -912,7 +914,7 @@ const UserList = () => {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
                   <p className="text-sm text-blue-800">
                     <span className="font-semibold">Employee:</span>{" "}
-                    {selectedEmployee.name}
+                    {selectedEmployee.name || selectedEmployee.fullName}
                   </p>
                   <p className="text-sm text-blue-800">
                     <span className="font-semibold">Username:</span> @
