@@ -27,8 +27,16 @@ const Products = ({ editProduct = null }) => {
   const [formData, setFormData] = useState({
     name: "",
     unit: "cup",
+    category: "finished_goods",
+    sku: "",
+    barcode: "",
     defaultSellingPrice: "",
+    costPrice: "",
     expiryDays: "",
+    minStockLevel: "",
+    maxStockLevel: "",
+    description: "",
+    isActive: true,
   });
 
   // Component state
@@ -45,8 +53,11 @@ const Products = ({ editProduct = null }) => {
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterUnit, setFilterUnit] = useState("all");
+  const [filterCategory, setFilterCategory] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const unitOptions = [
     { value: "cup", label: "Cup" },
@@ -58,6 +69,16 @@ const Products = ({ editProduct = null }) => {
     { value: "kg", label: "Kilogram (kg)" },
     { value: "grams", label: "Grams" },
     { value: "units", label: "Units" },
+  ];
+
+  const categoryOptions = [
+    { value: "finished_goods", label: "Finished Goods", color: "blue" },
+    { value: "beverages", label: "Beverages", color: "green" },
+    { value: "dairy", label: "Dairy Products", color: "yellow" },
+    { value: "bakery", label: "Bakery", color: "orange" },
+    { value: "snacks", label: "Snacks", color: "purple" },
+    { value: "frozen", label: "Frozen Products", color: "indigo" },
+    { value: "others", label: "Others", color: "gray" },
   ];
 
   // Redirect if not authenticated
@@ -80,8 +101,16 @@ const Products = ({ editProduct = null }) => {
       setFormData({
         name: editProduct.name || "",
         unit: editProduct.unit || "cup",
+        category: editProduct.category || "finished_goods",
+        sku: editProduct.sku || "",
+        barcode: editProduct.barcode || "",
         defaultSellingPrice: editProduct.defaultSellingPrice?.toString() || "",
+        costPrice: editProduct.costPrice?.toString() || "",
         expiryDays: editProduct.expiryDays?.toString() || "",
+        minStockLevel: editProduct.minStockLevel?.toString() || "",
+        maxStockLevel: editProduct.maxStockLevel?.toString() || "",
+        description: editProduct.description || "",
+        isActive: editProduct.isActive !== undefined ? editProduct.isActive : true,
       });
       setShowForm(true);
     }
@@ -95,7 +124,9 @@ const Products = ({ editProduct = null }) => {
       filtered = filtered.filter(
         (product) =>
           product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          product.productId?.toLowerCase().includes(searchTerm.toLowerCase())
+          product.productId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          product.barcode?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -103,8 +134,18 @@ const Products = ({ editProduct = null }) => {
       filtered = filtered.filter((product) => product.unit === filterUnit);
     }
 
+    if (filterCategory !== "all") {
+      filtered = filtered.filter((product) => product.category === filterCategory);
+    }
+
+    if (filterStatus === "active") {
+      filtered = filtered.filter((product) => product.isActive !== false);
+    } else if (filterStatus === "inactive") {
+      filtered = filtered.filter((product) => product.isActive === false);
+    }
+
     setFilteredProducts(filtered);
-  }, [products, searchTerm, filterUnit]);
+  }, [products, searchTerm, filterUnit, filterCategory, filterStatus]);
 
   const loadProducts = async () => {
     try {
@@ -126,10 +167,10 @@ const Products = ({ editProduct = null }) => {
   };
 
   const handleInputChange = (field) => (e) => {
-    let value = e.target.value;
+    let value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
 
-    if (field === "defaultSellingPrice" || field === "expiryDays") {
-      value = value.replace(/[^0-9.]/g, "");
+    if (["defaultSellingPrice", "costPrice", "expiryDays", "minStockLevel", "maxStockLevel"].includes(field)) {
+      value = value.toString().replace(/[^0-9.]/g, "");
     }
 
     setFormData((prev) => ({
@@ -150,6 +191,7 @@ const Products = ({ editProduct = null }) => {
 
     if (!formData.name.trim()) newErrors.name = "Product name is required";
     if (!formData.unit) newErrors.unit = "Unit is required";
+    if (!formData.category) newErrors.category = "Category is required";
     if (!formData.defaultSellingPrice.trim())
       newErrors.defaultSellingPrice = "Selling price is required";
     if (!formData.expiryDays.trim())
@@ -165,10 +207,39 @@ const Products = ({ editProduct = null }) => {
     }
 
     if (
+      formData.costPrice &&
+      (isNaN(formData.costPrice) || parseFloat(formData.costPrice) < 0)
+    ) {
+      newErrors.costPrice = "Please enter a valid cost price";
+    }
+
+    if (
       formData.expiryDays &&
       (isNaN(formData.expiryDays) || parseInt(formData.expiryDays) <= 0)
     ) {
       newErrors.expiryDays = "Please enter valid expiry days greater than 0";
+    }
+
+    if (
+      formData.minStockLevel &&
+      (isNaN(formData.minStockLevel) || parseInt(formData.minStockLevel) < 0)
+    ) {
+      newErrors.minStockLevel = "Please enter a valid minimum stock level";
+    }
+
+    if (
+      formData.maxStockLevel &&
+      (isNaN(formData.maxStockLevel) || parseInt(formData.maxStockLevel) < 0)
+    ) {
+      newErrors.maxStockLevel = "Please enter a valid maximum stock level";
+    }
+
+    if (
+      formData.minStockLevel &&
+      formData.maxStockLevel &&
+      parseInt(formData.minStockLevel) > parseInt(formData.maxStockLevel)
+    ) {
+      newErrors.maxStockLevel = "Maximum stock must be greater than minimum stock";
     }
 
     setErrors(newErrors);
@@ -182,6 +253,67 @@ const Products = ({ editProduct = null }) => {
       .toString()
       .padStart(2, "0");
     return `${prefix}${timestamp}${random}`;
+  };
+
+  const generateSKU = () => {
+    const category = formData.category.substring(0, 3).toUpperCase();
+    const name = formData.name.substring(0, 3).toUpperCase().replace(/\s/g, "");
+    const timestamp = Date.now().toString().slice(-4);
+    return `${category}-${name}-${timestamp}`;
+  };
+
+  const exportToCSV = () => {
+    const headers = [
+      "Product ID",
+      "Name",
+      "SKU",
+      "Barcode",
+      "Category",
+      "Unit",
+      "Selling Price",
+      "Cost Price",
+      "Profit Margin",
+      "Expiry Days",
+      "Min Stock",
+      "Max Stock",
+      "Status",
+      "Created At",
+    ];
+
+    const rows = filteredProducts.map((product) => [
+      product.productId || "",
+      product.name || "",
+      product.sku || "",
+      product.barcode || "",
+      categoryOptions.find((c) => c.value === product.category)?.label || product.category || "",
+      unitOptions.find((u) => u.value === product.unit)?.label || product.unit || "",
+      product.defaultSellingPrice || 0,
+      product.costPrice || 0,
+      product.defaultSellingPrice && product.costPrice
+        ? (product.defaultSellingPrice - product.costPrice).toFixed(2)
+        : 0,
+      product.expiryDays || "",
+      product.minStockLevel || "",
+      product.maxStockLevel || "",
+      product.isActive !== false ? "Active" : "Inactive",
+      formatDate(product.createdAt),
+    ]);
+
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `products_export_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setShowExportMenu(false);
+    setSuccessMessage(`Successfully exported ${filteredProducts.length} products to CSV!`);
+    setShowSuccess(true);
   };
 
   const handleSubmit = async (e) => {
@@ -215,8 +347,16 @@ const Products = ({ editProduct = null }) => {
         productId: productId,
         name: formData.name.trim(),
         unit: formData.unit,
+        category: formData.category,
+        sku: formData.sku.trim() || (isEditMode ? editProduct.sku : generateSKU()),
+        barcode: formData.barcode.trim(),
         defaultSellingPrice: parseFloat(formData.defaultSellingPrice),
+        costPrice: formData.costPrice ? parseFloat(formData.costPrice) : null,
         expiryDays: parseInt(formData.expiryDays),
+        minStockLevel: formData.minStockLevel ? parseInt(formData.minStockLevel) : null,
+        maxStockLevel: formData.maxStockLevel ? parseInt(formData.maxStockLevel) : null,
+        description: formData.description.trim(),
+        isActive: formData.isActive,
         ...(isEditMode
           ? {}
           : { createdAt: serverTimestamp(), createdBy: currentUser.userId }),
@@ -256,8 +396,16 @@ const Products = ({ editProduct = null }) => {
         setFormData({
           name: "",
           unit: "cup",
+          category: "finished_goods",
+          sku: "",
+          barcode: "",
           defaultSellingPrice: "",
+          costPrice: "",
           expiryDays: "",
+          minStockLevel: "",
+          maxStockLevel: "",
+          description: "",
+          isActive: true,
         });
       } else {
         setTimeout(() => {
@@ -360,7 +508,54 @@ const Products = ({ editProduct = null }) => {
               </h1>
               <p className="text-gray-600">Define and manage your products</p>
             </div>
-            <div className="mt-4 sm:mt-0">
+            <div className="mt-4 sm:mt-0 flex gap-3">
+              {!showForm && (
+                <div className="relative">
+                  <Button
+                    onClick={() => setShowExportMenu(!showExportMenu)}
+                    variant="secondary"
+                    size="lg"
+                  >
+                    <svg
+                      className="w-5 h-5 mr-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                    Export
+                  </Button>
+                  {showExportMenu && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-200 z-10">
+                      <button
+                        onClick={exportToCSV}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 rounded-t-xl flex items-center"
+                      >
+                        <svg
+                          className="w-4 h-4 mr-2 text-green-600"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                        Export to CSV
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               <Button onClick={() => setShowForm(!showForm)} size="lg">
                 {showForm ? (
                   <>
@@ -473,7 +668,7 @@ const Products = ({ editProduct = null }) => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Product Information */}
+              {/* Basic Information */}
               <div className="border border-gray-200 rounded-xl p-6 bg-gray-50">
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
                   <span className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center mr-3">
@@ -491,7 +686,7 @@ const Products = ({ editProduct = null }) => {
                       />
                     </svg>
                   </span>
-                  Product Information
+                  Basic Information
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <InputField
@@ -502,6 +697,45 @@ const Products = ({ editProduct = null }) => {
                     onChange={handleInputChange("name")}
                     error={errors.name}
                     required
+                  />
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Category <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={formData.category}
+                      onChange={handleInputChange("category")}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      required
+                    >
+                      {categoryOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.category && (
+                      <p className="text-sm text-red-600 mt-1">{errors.category}</p>
+                    )}
+                  </div>
+
+                  <InputField
+                    label="SKU"
+                    type="text"
+                    placeholder="Auto-generated if left empty"
+                    value={formData.sku}
+                    onChange={handleInputChange("sku")}
+                    error={errors.sku}
+                  />
+
+                  <InputField
+                    label="Barcode"
+                    type="text"
+                    placeholder="Enter barcode (optional)"
+                    value={formData.barcode}
+                    onChange={handleInputChange("barcode")}
+                    error={errors.barcode}
                   />
 
                   <div>
@@ -526,6 +760,52 @@ const Products = ({ editProduct = null }) => {
                   </div>
 
                   <InputField
+                    label="Expiry Days"
+                    type="number"
+                    placeholder="Enter shelf life in days"
+                    value={formData.expiryDays}
+                    onChange={handleInputChange("expiryDays")}
+                    error={errors.expiryDays}
+                    required
+                  />
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Description
+                    </label>
+                    <textarea
+                      value={formData.description}
+                      onChange={handleInputChange("description")}
+                      placeholder="Enter product description..."
+                      rows={2}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Pricing Information */}
+              <div className="border border-gray-200 rounded-xl p-6 bg-gray-50">
+                <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                  <span className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
+                    <svg
+                      className="w-5 h-5 text-green-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </span>
+                  Pricing Information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <InputField
                     label="Default Selling Price"
                     type="number"
                     placeholder="Enter selling price"
@@ -537,14 +817,96 @@ const Products = ({ editProduct = null }) => {
                   />
 
                   <InputField
-                    label="Expiry Days"
+                    label="Cost Price"
                     type="number"
-                    placeholder="Enter shelf life in days"
-                    value={formData.expiryDays}
-                    onChange={handleInputChange("expiryDays")}
-                    error={errors.expiryDays}
-                    required
+                    placeholder="Enter cost price (optional)"
+                    value={formData.costPrice}
+                    onChange={handleInputChange("costPrice")}
+                    error={errors.costPrice}
+                    step="0.01"
                   />
+
+                  {formData.defaultSellingPrice && formData.costPrice && (
+                    <div className="md:col-span-2 bg-blue-50 border border-blue-200 rounded-xl p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs text-blue-600 font-medium">Profit Margin</p>
+                          <p className="text-2xl font-bold text-blue-900">
+                            {formatCurrency(
+                              parseFloat(formData.defaultSellingPrice) - parseFloat(formData.costPrice)
+                            )}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-blue-600 font-medium">Markup %</p>
+                          <p className="text-2xl font-bold text-green-700">
+                            {(
+                              ((parseFloat(formData.defaultSellingPrice) - parseFloat(formData.costPrice)) /
+                                parseFloat(formData.costPrice)) *
+                              100
+                            ).toFixed(1)}
+                            %
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Inventory Management */}
+              <div className="border border-gray-200 rounded-xl p-6 bg-gray-50">
+                <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                  <span className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
+                    <svg
+                      className="w-5 h-5 text-purple-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                      />
+                    </svg>
+                  </span>
+                  Inventory Management
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <InputField
+                    label="Minimum Stock Level"
+                    type="number"
+                    placeholder="Enter minimum stock alert level"
+                    value={formData.minStockLevel}
+                    onChange={handleInputChange("minStockLevel")}
+                    error={errors.minStockLevel}
+                  />
+
+                  <InputField
+                    label="Maximum Stock Level"
+                    type="number"
+                    placeholder="Enter maximum stock level"
+                    value={formData.maxStockLevel}
+                    onChange={handleInputChange("maxStockLevel")}
+                    error={errors.maxStockLevel}
+                  />
+
+                  <div className="md:col-span-2 flex items-center">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.isActive}
+                        onChange={handleInputChange("isActive")}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      <span className="ml-3 text-sm font-medium text-gray-900">
+                        Product is {formData.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -611,44 +973,85 @@ const Products = ({ editProduct = null }) => {
           <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
             {/* Search and Filters */}
             <div className="p-6 border-b border-gray-200">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Search products..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full px-4 py-3 pl-11 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                    />
-                    <svg
-                      className="absolute left-3.5 top-3.5 h-5 w-5 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Search by name, Product ID, SKU, or barcode..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full px-4 py-3 pl-11 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                       />
-                    </svg>
+                      <svg
+                        className="absolute left-3.5 top-3.5 h-5 w-5 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                    </div>
                   </div>
                 </div>
 
-                <select
-                  value={filterUnit}
-                  onChange={(e) => setFilterUnit(e.target.value)}
-                  className="px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  <option value="all">All Units</option>
-                  {unitOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <select
+                    value={filterCategory}
+                    onChange={(e) => setFilterCategory(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+                  >
+                    <option value="all">All Categories</option>
+                    {categoryOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={filterUnit}
+                    onChange={(e) => setFilterUnit(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+                  >
+                    <option value="all">All Units</option>
+                    {unitOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+
+                  {(searchTerm || filterCategory !== "all" || filterUnit !== "all" || filterStatus !== "all") && (
+                    <button
+                      onClick={() => {
+                        setSearchTerm("");
+                        setFilterCategory("all");
+                        setFilterUnit("all");
+                        setFilterStatus("all");
+                      }}
+                      className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 

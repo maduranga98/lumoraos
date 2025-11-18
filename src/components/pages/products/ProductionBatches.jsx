@@ -156,15 +156,37 @@ const ProductionBatches = ({ editBatch = null }) => {
 
   const loadProducts = async () => {
     try {
-      const productsQuery = query(collection(db, "products"), orderBy("name"));
+      const productsQuery = query(collection(db, "products"), orderBy("createdAt", "desc"));
       const productsSnapshot = await getDocs(productsQuery);
       const productsData = productsSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
-      setProducts(productsData);
+      // Sort products by name for display in dropdown
+      const sortedProducts = productsData.sort((a, b) =>
+        (a.name || "").localeCompare(b.name || "")
+      );
+      setProducts(sortedProducts);
+      console.log(`Loaded ${sortedProducts.length} products for selection`);
     } catch (error) {
       console.error("Error loading products:", error);
+      // Fallback: try loading without orderBy in case of index issues
+      try {
+        const fallbackSnapshot = await getDocs(collection(db, "products"));
+        const fallbackData = fallbackSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        const sortedFallback = fallbackData.sort((a, b) =>
+          (a.name || "").localeCompare(b.name || "")
+        );
+        setProducts(sortedFallback);
+        console.log(`Loaded ${sortedFallback.length} products (fallback mode)`);
+      } catch (fallbackError) {
+        console.error("Fallback loading also failed:", fallbackError);
+        setErrorMessage("Failed to load products. Please refresh the page.");
+        setShowError(true);
+      }
     }
   };
 

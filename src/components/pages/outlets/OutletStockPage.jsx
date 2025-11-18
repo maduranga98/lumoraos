@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../../services/firebase";
 import AddOutletStock from "./AddOutletStock";
 import OutletStockCard from "./OutletStockCard";
 
 const OutletStockPage = () => {
+  const navigate = useNavigate();
   const [outlets, setOutlets] = useState([]);
   const [selectedOutlet, setSelectedOutlet] = useState("");
   const [stocks, setStocks] = useState([]);
@@ -103,6 +105,27 @@ const OutletStockPage = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
       <div className="max-w-6xl mx-auto space-y-6">
+        {/* Back Button */}
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-4 flex items-center text-gray-600 hover:text-gray-900 transition-colors bg-white px-4 py-2 rounded-xl shadow-sm hover:shadow-md"
+        >
+          <svg
+            className="w-5 h-5 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 19l-7-7 7-7"
+            />
+          </svg>
+          Back to Dashboard
+        </button>
+
         {/* Page Header */}
         <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
           <h1 className="text-3xl font-bold text-gray-900">
