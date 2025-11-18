@@ -18,6 +18,7 @@ import UserList from "./components/pages/users/UserList";
 
 // Logistics
 import AddVehicles from "./components/pages/logistics/AddVehicles";
+import VehicleList from "./components/pages/logistics/VehicleList";
 import ExpensesLog from "./components/pages/logistics/ExpensesLog";
 import ServicesAndRepairs from "./components/pages/logistics/ServicesAndReparis";
 
@@ -90,6 +91,14 @@ const App = () => {
         element={
           <ProtectedRoute permission="logistics_add_vehicles">
             <AddVehicles />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/vehicles"
+        element={
+          <ProtectedRoute permission="logistics_view_vehicles">
+            <VehicleList />
           </ProtectedRoute>
         }
       />

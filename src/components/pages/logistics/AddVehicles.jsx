@@ -182,6 +182,27 @@ const AddVehicles = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-2xl mx-auto">
+        {/* Back Button */}
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-4 flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+        >
+          <svg
+            className="w-5 h-5 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 19l-7-7 7-7"
+            />
+          </svg>
+          Back
+        </button>
+
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -273,7 +294,7 @@ const AddVehicles = () => {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => navigate("/dashboard")}
+                onClick={() => navigate("/vehicles")}
               >
                 Cancel
               </Button>
@@ -287,10 +308,13 @@ const AddVehicles = () => {
 
       <SuccessDialog
         isOpen={showSuccess}
-        onClose={() => setShowSuccess(false)}
+        onClose={() => {
+          setShowSuccess(false);
+          navigate("/vehicles");
+        }}
         title="Vehicle Registered Successfully!"
         message={successMessage}
-        buttonText="Register Another Vehicle"
+        buttonText="View All Vehicles"
       />
 
       <FailDialog

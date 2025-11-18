@@ -15,21 +15,20 @@ import Button from "../../ui/Button";
 import SuccessDialog from "../../ui/SuccessDialog";
 import FailDialog from "../../ui/FailDialog";
 
-const UserList = () => {
+const VehicleList = () => {
   const { user: currentUser, loading: authLoading } = useUser();
   const navigate = useNavigate();
 
-  const [employees, setEmployees] = useState([]);
-  const [roles, setRoles] = useState([]);
-  const [filteredEmployees, setFilteredEmployees] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [filteredVehicles, setFilteredVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [filterRole, setFilterRole] = useState("all");
+  const [filterType, setFilterType] = useState("all");
 
   // Modal states
   const [showModal, setShowModal] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [selectedVehicle, setSelectedVehicle] = useState(null);
 
   // Dialog states
   const [showSuccess, setShowSuccess] = useState(false);
@@ -44,127 +43,97 @@ const UserList = () => {
     }
   }, [authLoading, currentUser, navigate]);
 
-  // Load employees and roles
+  // Load vehicles
   useEffect(() => {
     if (currentUser) {
-      loadEmployees();
-      loadRoles();
+      loadVehicles();
     }
   }, [currentUser]);
 
-  // Filter employees
+  // Filter vehicles
   useEffect(() => {
-    let filtered = employees;
+    let filtered = vehicles;
 
     // Apply search filter
     if (searchTerm) {
       filtered = filtered.filter(
-        (emp) =>
-          emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          emp.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          emp.phone?.includes(searchTerm) ||
-          emp.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          emp.employeeId?.toLowerCase().includes(searchTerm.toLowerCase())
+        (vehicle) =>
+          vehicle.regNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          vehicle.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          vehicle.type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          vehicle.fuelType?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
     // Apply status filter
     if (filterStatus !== "all") {
-      filtered = filtered.filter((emp) => {
-        if (filterStatus === "active") return emp.status === "active";
-        if (filterStatus === "inactive") return emp.status === "inactive";
+      filtered = filtered.filter((vehicle) => {
+        if (filterStatus === "active") return vehicle.isActive === true;
+        if (filterStatus === "inactive") return vehicle.isActive === false;
         return true;
       });
     }
 
-    // Apply role filter
-    if (filterRole !== "all") {
-      filtered = filtered.filter((emp) => emp.roleId === filterRole);
+    // Apply type filter
+    if (filterType !== "all") {
+      filtered = filtered.filter((vehicle) => vehicle.type === filterType);
     }
 
-    setFilteredEmployees(filtered);
-  }, [employees, searchTerm, filterStatus, filterRole]);
+    setFilteredVehicles(filtered);
+  }, [vehicles, searchTerm, filterStatus, filterType]);
 
-  const loadEmployees = async () => {
+  const loadVehicles = async () => {
     setLoading(true);
     try {
-      const employeesQuery = query(
-        collection(db, "users"),
+      const vehiclesQuery = query(
+        collection(db, "vehicles"),
         orderBy("createdAt", "desc")
       );
-      const employeesSnapshot = await getDocs(employeesQuery);
-      const employeesData = employeesSnapshot.docs.map((doc) => ({
+      const vehiclesSnapshot = await getDocs(vehiclesQuery);
+      const vehiclesData = vehiclesSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
-      setEmployees(employeesData);
+      setVehicles(vehiclesData);
     } catch (error) {
-      console.error("Error loading employees:", error);
-      setErrorMessage("Failed to load employees. Please try again.");
+      console.error("Error loading vehicles:", error);
+      setErrorMessage("Failed to load vehicles. Please try again.");
       setShowError(true);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadRoles = async () => {
-    try {
-      const rolesQuery = query(collection(db, "roles"), orderBy("name"));
-      const rolesSnapshot = await getDocs(rolesQuery);
-      const rolesData = rolesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setRoles(rolesData);
-    } catch (error) {
-      console.error("Error loading roles:", error);
-    }
-  };
-
-  const handleViewDetails = (employee) => {
-    setSelectedEmployee(employee);
+  const handleViewDetails = (vehicle) => {
+    setSelectedVehicle(vehicle);
     setShowModal(true);
   };
 
-  const handleEditEmployee = (employee) => {
-    navigate("/addemployees", { state: { editEmployee: employee } });
-  };
-
-  const toggleEmployeeStatus = async (employee) => {
-    const newStatus = employee.status === "active" ? "inactive" : "active";
+  const toggleVehicleStatus = async (vehicle) => {
+    const newStatus = !vehicle.isActive;
 
     try {
-      const employeeRef = doc(db, "users", employee.id);
-      await updateDoc(employeeRef, {
-        status: newStatus,
+      const vehicleRef = doc(db, "vehicles", vehicle.id);
+      await updateDoc(vehicleRef, {
+        isActive: newStatus,
         updatedAt: serverTimestamp(),
-        updatedBy: currentUser.userId,
       });
 
       // Update local state
-      const updatedEmployees = employees.map((emp) =>
-        emp.id === employee.id ? { ...emp, status: newStatus } : emp
+      const updatedVehicles = vehicles.map((v) =>
+        v.id === vehicle.id ? { ...v, isActive: newStatus } : v
       );
-      setEmployees(updatedEmployees);
+      setVehicles(updatedVehicles);
 
       setSuccessMessage(
-        `Employee ${
-          newStatus === "active" ? "activated" : "deactivated"
-        } successfully!`
+        `Vehicle ${newStatus ? "activated" : "deactivated"} successfully!`
       );
       setShowSuccess(true);
     } catch (error) {
-      console.error("Error updating employee status:", error);
-      setErrorMessage("Failed to update employee status. Please try again.");
+      console.error("Error updating vehicle status:", error);
+      setErrorMessage("Failed to update vehicle status. Please try again.");
       setShowError(true);
     }
-  };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount || 0);
   };
 
   const formatDate = (timestamp) => {
@@ -177,10 +146,10 @@ const UserList = () => {
     });
   };
 
-  const getRoleName = (roleId) => {
-    const role = roles.find((r) => r.id === roleId);
-    return role?.name || "Unknown Role";
-  };
+  // Get unique vehicle types for filter
+  const vehicleTypes = [...new Set(vehicles.map((v) => v.type))].filter(
+    Boolean
+  );
 
   // Show loading while checking auth
   if (authLoading) {
@@ -221,7 +190,7 @@ const UserList = () => {
               d="M15 19l-7-7 7-7"
             />
           </svg>
-          Back to Dashboard
+          Back
         </button>
 
         {/* Header */}
@@ -229,14 +198,14 @@ const UserList = () => {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                Employee Directory
+                Vehicle Fleet
               </h1>
               <p className="text-gray-600">
-                Manage and view all registered employees
+                Manage and view all registered vehicles
               </p>
             </div>
             <div className="mt-4 sm:mt-0">
-              <Button onClick={() => navigate("/addemployees")} size="lg">
+              <Button onClick={() => navigate("/add-vehicles")} size="lg">
                 <svg
                   className="w-5 h-5 mr-2"
                   fill="none"
@@ -250,7 +219,7 @@ const UserList = () => {
                     d="M12 4v16m8-8H4"
                   />
                 </svg>
-                Add Employee
+                Add Vehicle
               </Button>
             </div>
           </div>
@@ -261,7 +230,7 @@ const UserList = () => {
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="Search by name, email, phone..."
+                  placeholder="Search by reg. no., brand, type..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full px-4 py-3 pl-11 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
@@ -293,14 +262,14 @@ const UserList = () => {
             </select>
 
             <select
-              value={filterRole}
-              onChange={(e) => setFilterRole(e.target.value)}
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
               className="px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
-              <option value="all">All Roles</option>
-              {roles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name}
+              <option value="all">All Types</option>
+              {vehicleTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
                 </option>
               ))}
             </select>
@@ -310,45 +279,47 @@ const UserList = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
               <div className="text-2xl font-bold text-blue-700">
-                {employees.length}
+                {vehicles.length}
               </div>
               <div className="text-sm text-blue-600 font-medium">
-                Total Employees
+                Total Vehicles
               </div>
             </div>
             <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
               <div className="text-2xl font-bold text-green-700">
-                {employees.filter((e) => e.status === "active").length}
+                {vehicles.filter((v) => v.isActive).length}
               </div>
               <div className="text-sm text-green-600 font-medium">Active</div>
             </div>
             <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
               <div className="text-2xl font-bold text-purple-700">
-                {employees.filter((e) => e.hasAccount).length}
+                {vehicleTypes.length}
               </div>
               <div className="text-sm text-purple-600 font-medium">
-                System Users
+                Vehicle Types
               </div>
             </div>
             <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4 border border-orange-200">
               <div className="text-2xl font-bold text-orange-700">
-                {roles.length}
+                {vehicles.filter((v) => !v.isActive).length}
               </div>
-              <div className="text-sm text-orange-600 font-medium">Roles</div>
+              <div className="text-sm text-orange-600 font-medium">
+                Inactive
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Employees Table */}
+        {/* Vehicles Table */}
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
           {loading ? (
             <div className="p-12">
               <div className="flex flex-col items-center justify-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-                <span className="text-gray-600">Loading employees...</span>
+                <span className="text-gray-600">Loading vehicles...</span>
               </div>
             </div>
-          ) : filteredEmployees.length === 0 ? (
+          ) : filteredVehicles.length === 0 ? (
             <div className="p-12 text-center">
               <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg
@@ -361,25 +332,25 @@ const UserList = () => {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                    d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
                   />
                 </svg>
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                {searchTerm || filterStatus !== "all" || filterRole !== "all"
-                  ? "No employees match your filters"
-                  : "No employees yet"}
+                {searchTerm || filterStatus !== "all" || filterType !== "all"
+                  ? "No vehicles match your filters"
+                  : "No vehicles yet"}
               </h3>
               <p className="text-gray-600 mb-6">
-                {searchTerm || filterStatus !== "all" || filterRole !== "all"
+                {searchTerm || filterStatus !== "all" || filterType !== "all"
                   ? "Try adjusting your search terms or filters"
-                  : "Get started by adding your first employee"}
+                  : "Get started by adding your first vehicle"}
               </p>
               {!searchTerm &&
                 filterStatus === "all" &&
-                filterRole === "all" && (
-                  <Button onClick={() => navigate("/addemployees")} size="lg">
-                    Add First Employee
+                filterType === "all" && (
+                  <Button onClick={() => navigate("/add-vehicles")} size="lg">
+                    Add First Vehicle
                   </Button>
                 )}
             </div>
@@ -389,16 +360,16 @@ const UserList = () => {
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Employee
+                      Vehicle
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Contact
+                      Type
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Role
+                      Fuel
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Compensation
+                      Tank Capacity
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Status
@@ -409,123 +380,90 @@ const UserList = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100">
-                  {filteredEmployees.map((employee) => (
+                  {filteredVehicles.map((vehicle) => (
                     <tr
-                      key={employee.id}
+                      key={vehicle.id}
                       className="hover:bg-gray-50 transition-colors"
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div
                             className={`w-11 h-11 rounded-xl flex items-center justify-center text-white font-semibold text-sm shadow-sm ${
-                              employee.status === "active"
+                              vehicle.isActive
                                 ? "bg-gradient-to-br from-blue-500 to-purple-600"
                                 : "bg-gray-400"
                             }`}
                           >
-                            {employee.name
-                              ? employee.name
-                                  .split(" ")
-                                  .map((n) => n[0])
-                                  .join("")
-                                  .toUpperCase()
-                                  .slice(0, 2)
-                              : "??"}
+                            {vehicle.regNo
+                              ? vehicle.regNo.substring(0, 3).toUpperCase()
+                              : "???"}
                           </div>
                           <div className="ml-4">
                             <div className="text-sm font-semibold text-gray-900">
-                              {employee.name || "Unnamed Employee"}
+                              {vehicle.regNo || "Unknown"}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {employee.employeeId}
+                              {vehicle.brand || "N/A"}
                             </div>
-                            {employee.hasAccount && (
-                              <div className="flex items-center mt-1">
-                                <svg
-                                  className="w-3 h-3 text-blue-500 mr-1"
-                                  fill="currentColor"
-                                  viewBox="0 0 20 20"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
-                                <span className="text-xs text-blue-600">
-                                  @{employee.username}
-                                </span>
-                              </div>
-                            )}
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {employee.phone || "No phone"}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {employee.email || "No email"}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium bg-indigo-100 text-indigo-800">
-                          {getRoleName(employee.roleId)}
+                          {vehicle.type
+                            ? vehicle.type.charAt(0).toUpperCase() +
+                              vehicle.type.slice(1)
+                            : "N/A"}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-semibold text-gray-900">
-                          {formatCurrency(employee.salary)}
+                        <div className="text-sm text-gray-900">
+                          {vehicle.fuelType
+                            ? vehicle.fuelType.charAt(0).toUpperCase() +
+                              vehicle.fuelType.slice(1)
+                            : "N/A"}
                         </div>
-                        {employee.commission > 0 && (
-                          <div className="text-xs text-gray-500">
-                            +{employee.commission}% commission
-                          </div>
-                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {vehicle.tankCapacity
+                            ? `${vehicle.tankCapacity} L`
+                            : "N/A"}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
                           className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold ${
-                            employee.status === "active"
+                            vehicle.isActive
                               ? "bg-green-100 text-green-700"
                               : "bg-red-100 text-red-700"
                           }`}
                         >
                           <span
                             className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
-                              employee.status === "active"
-                                ? "bg-green-500"
-                                : "bg-red-500"
+                              vehicle.isActive ? "bg-green-500" : "bg-red-500"
                             }`}
                           ></span>
-                          {employee.status === "active" ? "Active" : "Inactive"}
+                          {vehicle.isActive ? "Active" : "Inactive"}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center space-x-3">
                           <button
-                            onClick={() => handleViewDetails(employee)}
+                            onClick={() => handleViewDetails(vehicle)}
                             className="text-blue-600 hover:text-blue-800 transition-colors font-medium"
                           >
                             View
                           </button>
                           <button
-                            onClick={() => handleEditEmployee(employee)}
-                            className="text-indigo-600 hover:text-indigo-800 transition-colors font-medium"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => toggleEmployeeStatus(employee)}
+                            onClick={() => toggleVehicleStatus(vehicle)}
                             className={`transition-colors font-medium ${
-                              employee.status === "active"
+                              vehicle.isActive
                                 ? "text-red-600 hover:text-red-800"
                                 : "text-green-600 hover:text-green-800"
                             }`}
                           >
-                            {employee.status === "active"
-                              ? "Deactivate"
-                              : "Activate"}
+                            {vehicle.isActive ? "Deactivate" : "Activate"}
                           </button>
                         </div>
                       </td>
@@ -538,7 +476,7 @@ const UserList = () => {
         </div>
 
         {/* View Details Modal */}
-        {showModal && selectedEmployee && (
+        {showModal && selectedVehicle && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
               {/* Modal Header */}
@@ -547,26 +485,25 @@ const UserList = () => {
                   <div className="flex items-center">
                     <div
                       className={`w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg ${
-                        selectedEmployee.status === "active"
+                        selectedVehicle.isActive
                           ? "bg-gradient-to-br from-blue-500 to-purple-600"
                           : "bg-gray-400"
                       }`}
                     >
-                      {selectedEmployee.name
-                        ? selectedEmployee.name
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .toUpperCase()
-                            .slice(0, 2)
-                        : "??"}
+                      {selectedVehicle.regNo
+                        ? selectedVehicle.regNo.substring(0, 3).toUpperCase()
+                        : "???"}
                     </div>
                     <div className="ml-5">
                       <h2 className="text-2xl font-bold text-gray-900">
-                        {selectedEmployee.name || "Unnamed Employee"}
+                        {selectedVehicle.regNo || "Unknown"}
                       </h2>
                       <p className="text-gray-600">
-                        {selectedEmployee.employeeId}
+                        {selectedVehicle.brand || "N/A"} -{" "}
+                        {selectedVehicle.type
+                          ? selectedVehicle.type.charAt(0).toUpperCase() +
+                            selectedVehicle.type.slice(1)
+                          : "N/A"}
                       </p>
                     </div>
                   </div>
@@ -593,43 +530,58 @@ const UserList = () => {
 
               {/* Modal Body */}
               <div className="px-8 py-6 space-y-6">
-                {/* Contact Information */}
+                {/* Vehicle Information */}
                 <div>
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                    Contact Information
+                    Vehicle Information
                   </h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-gray-50 rounded-xl p-4">
                       <span className="text-xs font-medium text-gray-500">
-                        Phone
+                        Registration No.
                       </span>
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {selectedEmployee.phone || "N/A"}
+                        {selectedVehicle.regNo || "N/A"}
                       </p>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-4">
                       <span className="text-xs font-medium text-gray-500">
-                        Email
-                      </span>
-                      <p className="text-sm font-semibold text-gray-900 mt-1 break-all">
-                        {selectedEmployee.email || "N/A"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Employment Details */}
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                    Employment Details
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <span className="text-xs font-medium text-gray-500">
-                        Role
+                        Brand
                       </span>
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {getRoleName(selectedEmployee.roleId)}
+                        {selectedVehicle.brand || "N/A"}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <span className="text-xs font-medium text-gray-500">
+                        Type
+                      </span>
+                      <p className="text-sm font-semibold text-gray-900 mt-1">
+                        {selectedVehicle.type
+                          ? selectedVehicle.type.charAt(0).toUpperCase() +
+                            selectedVehicle.type.slice(1)
+                          : "N/A"}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <span className="text-xs font-medium text-gray-500">
+                        Fuel Type
+                      </span>
+                      <p className="text-sm font-semibold text-gray-900 mt-1">
+                        {selectedVehicle.fuelType
+                          ? selectedVehicle.fuelType.charAt(0).toUpperCase() +
+                            selectedVehicle.fuelType.slice(1)
+                          : "N/A"}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <span className="text-xs font-medium text-gray-500">
+                        Tank Capacity
+                      </span>
+                      <p className="text-sm font-semibold text-gray-900 mt-1">
+                        {selectedVehicle.tankCapacity
+                          ? `${selectedVehicle.tankCapacity} Liters`
+                          : "N/A"}
                       </p>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-4">
@@ -639,69 +591,19 @@ const UserList = () => {
                       <p className="mt-1">
                         <span
                           className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                            selectedEmployee.status === "active"
+                            selectedVehicle.isActive
                               ? "bg-green-100 text-green-700"
                               : "bg-red-100 text-red-700"
                           }`}
                         >
-                          {selectedEmployee.status === "active"
-                            ? "Active"
-                            : "Inactive"}
+                          {selectedVehicle.isActive ? "Active" : "Inactive"}
                         </span>
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <span className="text-xs font-medium text-gray-500">
-                        Monthly Salary
-                      </span>
-                      <p className="text-sm font-bold text-gray-900 mt-1">
-                        {formatCurrency(selectedEmployee.salary)}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <span className="text-xs font-medium text-gray-500">
-                        Commission
-                      </span>
-                      <p className="text-sm font-bold text-gray-900 mt-1">
-                        {selectedEmployee.commission}%
                       </p>
                     </div>
                   </div>
                 </div>
 
-                {/* System Account */}
-                {selectedEmployee.hasAccount && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                      System Account
-                    </h3>
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                      <div className="flex items-center">
-                        <svg
-                          className="w-5 h-5 text-blue-600 mr-2"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        <div>
-                          <span className="text-xs font-medium text-blue-600">
-                            Username
-                          </span>
-                          <p className="text-sm font-semibold text-blue-900">
-                            @{selectedEmployee.username}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Timestamps */}
+                {/* Record Information */}
                 <div>
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
                     Record Information
@@ -712,7 +614,7 @@ const UserList = () => {
                         Created On
                       </span>
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {formatDate(selectedEmployee.createdAt)}
+                        {formatDate(selectedVehicle.createdAt)}
                       </p>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-4">
@@ -720,7 +622,7 @@ const UserList = () => {
                         Last Updated
                       </span>
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {formatDate(selectedEmployee.updatedAt)}
+                        {formatDate(selectedVehicle.updatedAt)}
                       </p>
                     </div>
                   </div>
@@ -735,9 +637,6 @@ const UserList = () => {
                     onClick={() => setShowModal(false)}
                   >
                     Close
-                  </Button>
-                  <Button onClick={() => handleEditEmployee(selectedEmployee)}>
-                    Edit Employee
                   </Button>
                 </div>
               </div>
@@ -768,4 +667,4 @@ const UserList = () => {
   );
 };
 
-export default UserList;
+export default VehicleList;
