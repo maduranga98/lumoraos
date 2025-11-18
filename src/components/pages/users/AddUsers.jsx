@@ -775,11 +775,16 @@ const AddUsers = () => {
         {/* Success/Error Dialogs */}
         <SuccessDialog
           isOpen={showSuccess}
-          onClose={() => {
+          onClose={() => setShowSuccess(false)}
+          message={successMessage}
+          buttonText="Add Another Employee"
+          onConfirm={() => setShowSuccess(false)}
+          showSecondaryButton={true}
+          secondaryButtonText="Close"
+          onSecondaryAction={() => {
             setShowSuccess(false);
             navigate("/employeelist");
           }}
-          message={successMessage}
         />
 
         <FailDialog

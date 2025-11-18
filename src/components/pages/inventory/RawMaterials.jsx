@@ -21,7 +21,6 @@ import FailDialog from "../../ui/FailDialog";
 const RawMaterials = ({ editMaterial = null }) => {
   const { user: currentUser, loading: authLoading } = useUser();
   const navigate = useNavigate();
-  const isEditMode = !!editMaterial;
 
   // Form state
   const [formData, setFormData] = useState({
@@ -50,6 +49,9 @@ const RawMaterials = ({ editMaterial = null }) => {
   const [filterStock, setFilterStock] = useState("all");
   const [selectedMaterial, setSelectedMaterial] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState(null);
+
+  const isEditMode = !!editMaterial || !!editingMaterial;
 
   const unitOptions = [
     { value: "kg", label: "Kilograms (kg)" },
@@ -232,7 +234,8 @@ const RawMaterials = ({ editMaterial = null }) => {
       let materialDocRef;
 
       if (isEditMode) {
-        materialId = editMaterial.materialId || editMaterial.id;
+        const materialToEdit = editMaterial || editingMaterial;
+        materialId = materialToEdit.id;
         materialDocRef = doc(db, "raw_materials", materialId);
       } else {
         materialDocRef = doc(collection(db, "raw_materials"));
@@ -290,6 +293,7 @@ const RawMaterials = ({ editMaterial = null }) => {
           lastSupplier: "",
         });
       } else {
+        setEditingMaterial(null);
         setTimeout(() => {
           setShowForm(false);
         }, 1500);
@@ -407,7 +411,22 @@ const RawMaterials = ({ editMaterial = null }) => {
               </p>
             </div>
             <div className="mt-4 sm:mt-0">
-              <Button onClick={() => setShowForm(!showForm)} size="lg">
+              <Button
+                onClick={() => {
+                  if (showForm) {
+                    setEditingMaterial(null);
+                    setFormData({
+                      name: "",
+                      unit: "kg",
+                      currentStock: "",
+                      reorderLevel: "",
+                      lastSupplier: "",
+                    });
+                  }
+                  setShowForm(!showForm);
+                }}
+                size="lg"
+              >
                 {showForm ? (
                   <>
                     <svg
@@ -664,7 +683,17 @@ const RawMaterials = ({ editMaterial = null }) => {
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => setShowForm(false)}
+                  onClick={() => {
+                    setEditingMaterial(null);
+                    setFormData({
+                      name: "",
+                      unit: "kg",
+                      currentStock: "",
+                      reorderLevel: "",
+                      lastSupplier: "",
+                    });
+                    setShowForm(false);
+                  }}
                   className="px-6"
                 >
                   Cancel
@@ -863,6 +892,7 @@ const RawMaterials = ({ editMaterial = null }) => {
                               </button>
                               <button
                                 onClick={() => {
+                                  setEditingMaterial(material);
                                   setFormData({
                                     name: material.name,
                                     unit: material.unit,
@@ -1036,6 +1066,7 @@ const RawMaterials = ({ editMaterial = null }) => {
                   </Button>
                   <Button
                     onClick={() => {
+                      setEditingMaterial(selectedMaterial);
                       setFormData({
                         name: selectedMaterial.name,
                         unit: selectedMaterial.unit,

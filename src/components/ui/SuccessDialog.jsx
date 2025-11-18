@@ -10,10 +10,21 @@ const SuccessDialog = ({
   message,
   buttonText = "Continue",
   onConfirm,
+  showSecondaryButton = false,
+  secondaryButtonText = "Close",
+  onSecondaryAction,
 }) => {
   const handleConfirm = () => {
     if (onConfirm) {
       onConfirm();
+    } else {
+      onClose();
+    }
+  };
+
+  const handleSecondaryAction = () => {
+    if (onSecondaryAction) {
+      onSecondaryAction();
     } else {
       onClose();
     }
@@ -27,9 +38,28 @@ const SuccessDialog = ({
         </div>
         <h3 className="text-lg font-medium text-gray-900 mb-2">{title}</h3>
         {message && <p className="text-sm text-gray-500 mb-6">{message}</p>}
-        <Button variant="success" onClick={handleConfirm} className="w-full">
-          {buttonText}
-        </Button>
+        {showSecondaryButton ? (
+          <div className="flex space-x-3">
+            <Button
+              variant="secondary"
+              onClick={handleSecondaryAction}
+              className="flex-1"
+            >
+              {secondaryButtonText}
+            </Button>
+            <Button
+              variant="success"
+              onClick={handleConfirm}
+              className="flex-1"
+            >
+              {buttonText}
+            </Button>
+          </div>
+        ) : (
+          <Button variant="success" onClick={handleConfirm} className="w-full">
+            {buttonText}
+          </Button>
+        )}
       </div>
     </Modal>
   );

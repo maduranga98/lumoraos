@@ -308,13 +308,17 @@ const AddVehicles = () => {
 
       <SuccessDialog
         isOpen={showSuccess}
-        onClose={() => {
+        onClose={() => setShowSuccess(false)}
+        title="Vehicle Registered Successfully!"
+        message={successMessage}
+        buttonText="Add Another Vehicle"
+        onConfirm={() => setShowSuccess(false)}
+        showSecondaryButton={true}
+        secondaryButtonText="Close"
+        onSecondaryAction={() => {
           setShowSuccess(false);
           navigate("/vehicles");
         }}
-        title="Vehicle Registered Successfully!"
-        message={successMessage}
-        buttonText="View All Vehicles"
       />
 
       <FailDialog
