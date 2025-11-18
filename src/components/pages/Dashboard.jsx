@@ -237,6 +237,12 @@ const Dashboard = () => {
             }
           >
             <ActionButton
+              emoji="🚗"
+              label="Vehicle List"
+              onClick={() => navigate("/vehicles")}
+              permission="logistics_view_vehicles"
+            />
+            <ActionButton
               emoji="🚐"
               label="Add Vehicle"
               onClick={() => navigate("/add-vehicles")}

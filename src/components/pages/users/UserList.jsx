@@ -37,6 +37,12 @@ const UserList = () => {
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Password management states
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !currentUser) {
@@ -180,6 +186,62 @@ const UserList = () => {
   const getRoleName = (roleId) => {
     const role = roles.find((r) => r.id === roleId);
     return role?.name || "Unknown Role";
+  };
+
+  const generatePassword = () => {
+    const chars =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%";
+    let password = "";
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewPassword(password);
+    setConfirmPassword(password);
+  };
+
+  const handleChangePassword = async () => {
+    if (!newPassword) {
+      setErrorMessage("Please enter a new password");
+      setShowError(true);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setErrorMessage("Passwords do not match");
+      setShowError(true);
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setErrorMessage("Password must be at least 8 characters long");
+      setShowError(true);
+      return;
+    }
+
+    try {
+      const employeeRef = doc(db, "users", selectedEmployee.id);
+      await updateDoc(employeeRef, {
+        password: newPassword,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.userId,
+      });
+
+      setSuccessMessage(
+        `Password for ${selectedEmployee.name} has been changed successfully!\n\nNew Password: ${newPassword}\n\n⚠️ Please save this password securely!`
+      );
+      setShowSuccess(true);
+      setShowPasswordModal(false);
+      setNewPassword("");
+      setConfirmPassword("");
+      setShowPassword(false);
+
+      // Refresh employee data
+      loadEmployees();
+    } catch (error) {
+      console.error("Error changing password:", error);
+      setErrorMessage("Failed to change password. Please try again.");
+      setShowError(true);
+    }
   };
 
   // Show loading while checking auth
@@ -673,28 +735,73 @@ const UserList = () => {
                 {selectedEmployee.hasAccount && (
                   <div>
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                      System Account
+                      System Account Credentials
                     </h3>
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                      <div className="flex items-center">
-                        <svg
-                          className="w-5 h-5 text-blue-600 mr-2"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        <div>
-                          <span className="text-xs font-medium text-blue-600">
-                            Username
-                          </span>
-                          <p className="text-sm font-semibold text-blue-900">
-                            @{selectedEmployee.username}
-                          </p>
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <svg
+                            className="w-5 h-5 text-blue-600 mr-2"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                          <div>
+                            <span className="text-xs font-medium text-blue-600">
+                              Username
+                            </span>
+                            <p className="text-sm font-semibold text-blue-900">
+                              @{selectedEmployee.username}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <svg
+                            className="w-5 h-5 text-blue-600 mr-2"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                          <div>
+                            <span className="text-xs font-medium text-blue-600">
+                              Password
+                            </span>
+                            <p className="text-sm font-semibold text-blue-900">
+                              {showPassword
+                                ? selectedEmployee.password || "********"
+                                : "********"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            {showPassword ? "Hide" : "Show"}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowModal(false);
+                              setShowPasswordModal(true);
+                            }}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            Change
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -763,6 +870,155 @@ const UserList = () => {
           buttonText="Try Again"
           onRetry={() => setShowError(false)}
         />
+
+        {/* Change Password Modal */}
+        {showPasswordModal && selectedEmployee && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full">
+              {/* Modal Header */}
+              <div className="bg-white border-b border-gray-200 px-6 py-4 rounded-t-3xl">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Change Password
+                  </h2>
+                  <button
+                    onClick={() => {
+                      setShowPasswordModal(false);
+                      setNewPassword("");
+                      setConfirmPassword("");
+                      setShowPassword(false);
+                    }}
+                    className="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="px-6 py-6 space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-blue-800">
+                    <span className="font-semibold">Employee:</span>{" "}
+                    {selectedEmployee.name}
+                  </p>
+                  <p className="text-sm text-blue-800">
+                    <span className="font-semibold">Username:</span> @
+                    {selectedEmployee.username}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    New Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      placeholder="Enter new password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-2.5 text-gray-500 hover:text-gray-700"
+                    >
+                      {showPassword ? (
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                          />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={generatePassword}
+                    className="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Generate Strong Password
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Confirm Password
+                  </label>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    placeholder="Confirm new password"
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-gray-50 px-6 py-4 rounded-b-3xl border-t border-gray-200">
+                <div className="flex justify-end space-x-3">
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setShowPasswordModal(false);
+                      setNewPassword("");
+                      setConfirmPassword("");
+                      setShowPassword(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={handleChangePassword}>
+                    Change Password
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
