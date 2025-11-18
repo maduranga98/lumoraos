@@ -28,14 +28,14 @@ const Dashboard = () => {
     }
 
     return (
-      <div className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-gray-100 hover:border-gray-200">
+      <div className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 p-6 border border-gray-100 hover:border-blue-200 group hover:-translate-y-1">
         <div className="flex items-center mb-6">
           <div
-            className={`w-14 h-14 ${iconBg} rounded-xl flex items-center justify-center mr-4 shadow-sm`}
+            className={`w-14 h-14 ${iconBg} rounded-xl flex items-center justify-center mr-4 shadow-lg group-hover:shadow-xl transition-shadow duration-300 group-hover:scale-110`}
           >
             {icon}
           </div>
-          <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+          <h2 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors duration-300">{title}</h2>
         </div>
         <div className="space-y-2.5">{visibleChildren}</div>
       </div>
@@ -88,13 +88,18 @@ const Dashboard = () => {
   };
 
   // Stat Card Component
-  const StatCard = ({ value, label, color, bgColor }) => (
+  const StatCard = ({ value, label, color, bgColor, icon }) => (
     <div
-      className={`${bgColor} rounded-xl p-5 hover:scale-105 transition-transform duration-200 cursor-pointer border border-${color}-100`}
+      className={`${bgColor} rounded-xl p-6 hover:scale-105 hover:shadow-lg transition-all duration-300 cursor-pointer border border-${color}-200 group relative overflow-hidden`}
     >
-      <div className={`text-3xl font-bold ${color} mb-1`}>{value}</div>
-      <div className={`text-sm ${color.replace("600", "800")} font-medium`}>
-        {label}
+      <div className="absolute top-0 right-0 opacity-10 transform translate-x-4 -translate-y-4 group-hover:translate-x-2 group-hover:-translate-y-2 transition-transform duration-300">
+        {icon && <div className="text-6xl">{icon}</div>}
+      </div>
+      <div className="relative z-10">
+        <div className={`text-3xl font-bold ${color} mb-2`}>{value}</div>
+        <div className={`text-sm ${color.replace("600", "700")} font-semibold`}>
+          {label}
+        </div>
       </div>
     </div>
   );
@@ -103,22 +108,23 @@ const Dashboard = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Enhanced Header */}
-        <div className="bg-white rounded-3xl shadow-xl p-8 mb-8 border border-gray-100">
-          <div className="flex items-center justify-between">
+        <div className="bg-gradient-to-r from-white via-blue-50 to-white rounded-3xl shadow-2xl p-8 mb-8 border border-blue-100 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-pink-500/5"></div>
+          <div className="relative z-10 flex items-center justify-between">
             <div className="flex items-center space-x-6">
               {/* User Avatar */}
-              <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center text-white text-2xl font-bold shadow-lg">
+              <div className="w-20 h-20 bg-gradient-to-br from-blue-500 via-indigo-600 to-purple-600 rounded-2xl flex items-center justify-center text-white text-2xl font-bold shadow-2xl ring-4 ring-blue-100 animate-pulse-slow">
                 {user?.name?.charAt(0)?.toUpperCase() || "U"}
               </div>
 
               {/* User Info */}
               <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-1">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 bg-clip-text text-transparent mb-2">
                   Welcome back, {user?.name?.split(" ")[0] || "User"}!
                 </h1>
                 <p className="text-gray-600 flex items-center space-x-2">
                   <Shield className="w-4 h-4 text-indigo-600" />
-                  <span className="font-medium text-indigo-600">
+                  <span className="font-semibold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full text-sm">
                     {getUserRole()}
                   </span>
                 </p>
@@ -499,10 +505,13 @@ const Dashboard = () => {
         </div>
 
         {/* Enhanced Quick Stats */}
-        <div className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-2xl font-bold text-gray-900">Quick Overview</h3>
-            <button className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center space-x-1">
+        <div className="bg-gradient-to-br from-white via-gray-50 to-white rounded-3xl shadow-xl p-8 border border-gray-100">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-1">Quick Overview</h3>
+              <p className="text-sm text-gray-600">Real-time system statistics</p>
+            </div>
+            <button className="text-sm text-blue-600 hover:text-blue-700 font-semibold flex items-center space-x-2 bg-blue-50 px-4 py-2 rounded-xl hover:bg-blue-100 transition-all duration-200">
               <span>View Details</span>
               <svg
                 className="w-4 h-4"
@@ -523,37 +532,41 @@ const Dashboard = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <PermissionGate permission="hr_view_employees">
               <StatCard
-                value="-"
+                value="--"
                 label="Total Employees"
                 color="text-blue-600"
-                bgColor="bg-blue-50"
+                bgColor="bg-gradient-to-br from-blue-50 to-blue-100"
+                icon="👥"
               />
             </PermissionGate>
 
             <PermissionGate permission="logistics_view_vehicles">
               <StatCard
-                value="-"
+                value="--"
                 label="Active Vehicles"
                 color="text-green-600"
-                bgColor="bg-green-50"
+                bgColor="bg-gradient-to-br from-green-50 to-green-100"
+                icon="🚗"
               />
             </PermissionGate>
 
             <PermissionGate permission="inventory_view_suppliers">
               <StatCard
-                value="-"
+                value="--"
                 label="Active Suppliers"
                 color="text-purple-600"
-                bgColor="bg-purple-50"
+                bgColor="bg-gradient-to-br from-purple-50 to-purple-100"
+                icon="🏭"
               />
             </PermissionGate>
 
             <PermissionGate permission="stock_view_material_stock">
               <StatCard
-                value="-"
+                value="--"
                 label="Stock Items"
                 color="text-orange-600"
-                bgColor="bg-orange-50"
+                bgColor="bg-gradient-to-br from-orange-50 to-orange-100"
+                icon="📦"
               />
             </PermissionGate>
           </div>
