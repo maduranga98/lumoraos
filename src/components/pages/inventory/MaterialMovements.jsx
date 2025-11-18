@@ -1,19 +1,13 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   collection,
   getDocs,
   doc,
-  setDoc,
-  addDoc,
   serverTimestamp,
   query,
   orderBy,
   getDoc,
-  updateDoc,
-  deleteDoc,
   runTransaction,
-  limit,
-  startAfter,
 } from "firebase/firestore";
 import { db } from "../../../services/firebase";
 import { useUser } from "../../../contexts/userContext";
