@@ -1,5 +1,5 @@
 // src/components/pages/users/AddUsers.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   doc,
   setDoc,
@@ -63,6 +63,32 @@ const AddUsers = () => {
   // Get modules for permission selection
   const modules = getModulesForSelection();
 
+  // Handle predefined role selection
+  const handlePredefinedRoleChange = useCallback((roleId) => {
+    setSelectedPredefinedRole(roleId);
+
+    if (roleId) {
+      const role = PREDEFINED_ROLES[roleId.toUpperCase()];
+      if (role) {
+        if (role.permissions === "all") {
+          // Admin role - select all permissions
+          const allPerms = [];
+          modules.forEach((module) => {
+            module.permissions.forEach((perm) => {
+              allPerms.push(perm.value);
+            });
+          });
+          setSelectedPermissions(allPerms);
+        } else {
+          // Set predefined role permissions
+          setSelectedPermissions([...role.permissions]);
+        }
+      }
+    } else {
+      setSelectedPermissions([]);
+    }
+  }, [modules]);
+
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !currentUser) {
@@ -99,33 +125,7 @@ const AddUsers = () => {
         setSelectedPermissions(employee.permissions || []);
       }
     }
-  }, [location.state]);
-
-  // Handle predefined role selection
-  const handlePredefinedRoleChange = (roleId) => {
-    setSelectedPredefinedRole(roleId);
-
-    if (roleId) {
-      const role = PREDEFINED_ROLES[roleId.toUpperCase()];
-      if (role) {
-        if (role.permissions === "all") {
-          // Admin role - select all permissions
-          const allPerms = [];
-          modules.forEach((module) => {
-            module.permissions.forEach((perm) => {
-              allPerms.push(perm.value);
-            });
-          });
-          setSelectedPermissions(allPerms);
-        } else {
-          // Set predefined role permissions
-          setSelectedPermissions([...role.permissions]);
-        }
-      }
-    } else {
-      setSelectedPermissions([]);
-    }
-  };
+  }, [location.state, handlePredefinedRoleChange]);
 
   // Toggle role type
   const handleRoleTypeChange = (type) => {
