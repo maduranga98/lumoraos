@@ -5,12 +5,13 @@ import {
   setDoc,
   collection,
   addDoc,
+  updateDoc,
   serverTimestamp,
   getDoc,
 } from "firebase/firestore";
 import { db } from "../../../services/firebase";
 import { useUser } from "../../../contexts/userContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import InputField from "../../ui/InputField";
 import Button from "../../ui/Button";
 import SuccessDialog from "../../ui/SuccessDialog";
@@ -24,6 +25,11 @@ import { Shield, Users, Lock, CheckCircle } from "lucide-react";
 const AddUsers = () => {
   const { user: currentUser, loading: authLoading } = useUser();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editEmployeeId, setEditEmployeeId] = useState(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -63,6 +69,37 @@ const AddUsers = () => {
       navigate("/login");
     }
   }, [authLoading, currentUser, navigate]);
+
+  // Handle edit mode - populate form with existing employee data
+  useEffect(() => {
+    if (location.state?.editEmployee) {
+      const employee = location.state.editEmployee;
+      setIsEditMode(true);
+      setEditEmployeeId(employee.id);
+
+      // Populate form data
+      setFormData({
+        name: employee.name || employee.fullName || "",
+        salary: employee.salary || "",
+        commission: employee.commission || "",
+        phone: employee.phone || employee.phoneNumber || "",
+        email: employee.email || "",
+        hasAccount: employee.hasAccount || false,
+        username: employee.username || "",
+      });
+
+      // Set role information
+      if (employee.roleType === "predefined") {
+        setRoleType("predefined");
+        setSelectedPredefinedRole(employee.roleId || "");
+        handlePredefinedRoleChange(employee.roleId || "");
+      } else {
+        setRoleType("custom");
+        setCustomRoleName(employee.role || "");
+        setSelectedPermissions(employee.permissions || []);
+      }
+    }
+  }, [location.state]);
 
   // Handle predefined role selection
   const handlePredefinedRoleChange = (roleId) => {
@@ -258,7 +295,7 @@ const AddUsers = () => {
 
     // Check if user is authenticated
     if (!currentUser) {
-      setErrorMessage("You must be logged in to add employees.");
+      setErrorMessage("You must be logged in to manage employees.");
       setShowError(true);
       return;
     }
@@ -277,6 +314,7 @@ const AddUsers = () => {
 
       // Prepare user data
       const userData = {
+        name: formData.name,
         fullName: formData.name,
         role: finalRole,
         roleType: roleType,
@@ -287,59 +325,75 @@ const AddUsers = () => {
         permissions: selectedPermissions,
         salary: Number(formData.salary) || 0,
         commission: Number(formData.commission) || 0,
+        phone: formData.phone || "",
         phoneNumber: formData.phone || "",
         email: formData.email || "",
         hasAccount: formData.hasAccount,
-        createdAt: serverTimestamp(),
-        createdBy: creatorId,
+        updatedAt: serverTimestamp(),
+        updatedBy: creatorId,
         status: "active",
         isActive: true,
       };
 
-      if (formData.hasAccount) {
-        userData.username = formData.username.toLowerCase();
-        userData.password = generatedPassword; // In production, hash this!
-      }
+      if (isEditMode) {
+        // Update existing employee
+        const employeeRef = doc(db, "users", editEmployeeId);
+        await updateDoc(employeeRef, userData);
 
-      // Save to Firestore
-      const userRef = await addDoc(collection(db, "users"), userData);
+        setSuccessMessage(`Employee "${formData.name}" updated successfully!`);
+        setShowSuccess(true);
+      } else {
+        // Create new employee
+        userData.createdAt = serverTimestamp();
+        userData.createdBy = creatorId;
 
-      // If username provided, reserve it
-      if (formData.hasAccount && formData.username) {
-        await setDoc(doc(db, "usernames", formData.username.toLowerCase()), {
-          userId: userRef.id,
-          createdAt: serverTimestamp(),
+        if (formData.hasAccount) {
+          userData.username = formData.username.toLowerCase();
+          userData.password = generatedPassword; // In production, hash this!
+        }
+
+        // Save to Firestore
+        const userRef = await addDoc(collection(db, "users"), userData);
+
+        // If username provided, reserve it
+        if (formData.hasAccount && formData.username) {
+          await setDoc(doc(db, "usernames", formData.username.toLowerCase()), {
+            userId: userRef.id,
+            createdAt: serverTimestamp(),
+          });
+        }
+
+        setSuccessMessage(
+          `Employee "${formData.name}" added successfully!${
+            formData.hasAccount
+              ? `\n\nLogin Credentials:\nUsername: ${formData.username}\nPassword: ${generatedPassword}\n\n⚠️ Please save these credentials securely!`
+              : ""
+          }`
+        );
+        setShowSuccess(true);
+
+        // Reset form
+        setFormData({
+          name: "",
+          salary: "",
+          commission: "",
+          phone: "",
+          email: "",
+          hasAccount: false,
+          username: "",
         });
+        setRoleType("predefined");
+        setSelectedPredefinedRole("");
+        setCustomRoleName("");
+        setSelectedPermissions([]);
+        setGeneratedPassword("");
+        setUsernameAvailable(null);
       }
-
-      setSuccessMessage(
-        `Employee "${formData.name}" added successfully!${
-          formData.hasAccount
-            ? `\n\nLogin Credentials:\nUsername: ${formData.username}\nPassword: ${generatedPassword}\n\n⚠️ Please save these credentials securely!`
-            : ""
-        }`
-      );
-      setShowSuccess(true);
-
-      // Reset form
-      setFormData({
-        name: "",
-        salary: "",
-        commission: "",
-        phone: "",
-        email: "",
-        hasAccount: false,
-        username: "",
-      });
-      setRoleType("predefined");
-      setSelectedPredefinedRole("");
-      setCustomRoleName("");
-      setSelectedPermissions([]);
-      setGeneratedPassword("");
-      setUsernameAvailable(null);
     } catch (error) {
-      console.error("Error adding user:", error);
-      setErrorMessage("Failed to add employee. Please try again.");
+      console.error(`Error ${isEditMode ? "updating" : "adding"} user:`, error);
+      setErrorMessage(
+        `Failed to ${isEditMode ? "update" : "add"} employee. Please try again.`
+      );
       setShowError(true);
     } finally {
       setLoading(false);
@@ -378,10 +432,12 @@ const AddUsers = () => {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-gray-900">
-                Add New Employee
+                {isEditMode ? "Edit Employee" : "Add New Employee"}
               </h1>
               <p className="text-gray-600">
-                Create user account with role-based permissions
+                {isEditMode
+                  ? "Update employee information and permissions"
+                  : "Create user account with role-based permissions"}
               </p>
             </div>
           </div>
@@ -705,7 +761,13 @@ const AddUsers = () => {
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Adding Employee..." : "Add Employee"}
+              {loading
+                ? isEditMode
+                  ? "Updating Employee..."
+                  : "Adding Employee..."
+                : isEditMode
+                ? "Update Employee"
+                : "Add Employee"}
             </Button>
           </div>
         </form>
