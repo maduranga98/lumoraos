@@ -5,6 +5,12 @@ import { Routes, Route, Navigate } from "react-router-dom";
 // Auth Components
 import Login from "./components/auth/Login";
 import Signup from "./components/auth/Signup";
+import SuperAdminLogin from "./components/auth/SuperAdminLogin";
+
+// Super Admin Components
+import SuperAdminDashboard from "./components/superadmin/SuperAdminDashboard";
+import RegisterUser from "./components/superadmin/RegisterUser";
+import SuperAdminSetup from "./components/superadmin/SuperAdminSetup";
 
 // Protected Route Component
 import ProtectedRoute from "./components/guards/ProtectedRoute";
@@ -54,8 +60,30 @@ const App = () => {
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
 
+      {/* Super Admin Public Routes */}
+      <Route path="/superadmin-login" element={<SuperAdminLogin />} />
+      <Route path="/superadmin-setup" element={<SuperAdminSetup />} />
+
       {/* Redirect root to dashboard */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+      {/* ==================== SUPER ADMIN ROUTES ==================== */}
+      <Route
+        path="/superadmin/dashboard"
+        element={
+          <ProtectedRoute>
+            <SuperAdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/superadmin/register-user"
+        element={
+          <ProtectedRoute>
+            <RegisterUser />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Dashboard - Basic Authentication Required */}
       <Route

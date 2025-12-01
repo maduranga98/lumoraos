@@ -49,6 +49,7 @@ export function UserProvider({ children }) {
               status: firestoreData.status || "active",
               isActive:
                 userData.isActive !== undefined ? userData.isActive : true,
+              isSuperAdmin: firestoreData.roleId === "superadmin" || userData.isSuperAdmin || false,
             });
           } else {
             // If user doc doesn't exist, use stored data
@@ -201,8 +202,8 @@ export function UserProvider({ children }) {
   const hasPermission = (permission) => {
     if (!user || !user.permissions) return false;
 
-    // Admin has all permissions
-    if (user.roleId === "admin") return true;
+    // Super Admin and Admin have all permissions
+    if (user.roleId === "superadmin" || user.roleId === "admin") return true;
 
     return user.permissions.includes(permission);
   };
@@ -215,8 +216,8 @@ export function UserProvider({ children }) {
   const hasAnyPermission = (permissions) => {
     if (!user || !user.permissions) return false;
 
-    // Admin has all permissions
-    if (user.roleId === "admin") return true;
+    // Super Admin and Admin have all permissions
+    if (user.roleId === "superadmin" || user.roleId === "admin") return true;
 
     return permissions.some((permission) =>
       user.permissions.includes(permission)
@@ -231,8 +232,8 @@ export function UserProvider({ children }) {
   const hasAllPermissions = (permissions) => {
     if (!user || !user.permissions) return false;
 
-    // Admin has all permissions
-    if (user.roleId === "admin") return true;
+    // Super Admin and Admin have all permissions
+    if (user.roleId === "superadmin" || user.roleId === "admin") return true;
 
     return permissions.every((permission) =>
       user.permissions.includes(permission)
@@ -247,8 +248,8 @@ export function UserProvider({ children }) {
   const hasModuleAccess = (modulePrefix) => {
     if (!user || !user.permissions) return false;
 
-    // Admin has all permissions
-    if (user.roleId === "admin") return true;
+    // Super Admin and Admin have all permissions
+    if (user.roleId === "superadmin" || user.roleId === "admin") return true;
 
     return user.permissions.some((permission) =>
       permission.startsWith(`${modulePrefix}_`)
@@ -263,8 +264,8 @@ export function UserProvider({ children }) {
   const canView = (modulePrefix) => {
     if (!user || !user.permissions) return false;
 
-    // Admin has all permissions
-    if (user.roleId === "admin") return true;
+    // Super Admin and Admin have all permissions
+    if (user.roleId === "superadmin" || user.roleId === "admin") return true;
 
     // Check for any view permission in the module
     return user.permissions.some((permission) =>
@@ -280,8 +281,8 @@ export function UserProvider({ children }) {
   const canAdd = (modulePrefix) => {
     if (!user || !user.permissions) return false;
 
-    // Admin has all permissions
-    if (user.roleId === "admin") return true;
+    // Super Admin and Admin have all permissions
+    if (user.roleId === "superadmin" || user.roleId === "admin") return true;
 
     // Check for any add permission in the module
     return user.permissions.some((permission) =>
@@ -297,8 +298,8 @@ export function UserProvider({ children }) {
   const canEdit = (modulePrefix) => {
     if (!user || !user.permissions) return false;
 
-    // Admin has all permissions
-    if (user.roleId === "admin") return true;
+    // Super Admin and Admin have all permissions
+    if (user.roleId === "superadmin" || user.roleId === "admin") return true;
 
     // Check for any edit permission in the module
     return user.permissions.some((permission) =>
@@ -314,8 +315,8 @@ export function UserProvider({ children }) {
   const canDelete = (modulePrefix) => {
     if (!user || !user.permissions) return false;
 
-    // Admin has all permissions
-    if (user.roleId === "admin") return true;
+    // Super Admin and Admin have all permissions
+    if (user.roleId === "superadmin" || user.roleId === "admin") return true;
 
     // Check for any delete permission in the module
     return user.permissions.some((permission) =>
@@ -329,6 +330,14 @@ export function UserProvider({ children }) {
    */
   const isAdmin = () => {
     return user?.roleId === "admin";
+  };
+
+  /**
+   * Check if user is a super admin
+   * @returns {boolean}
+   */
+  const isSuperAdmin = () => {
+    return user?.roleId === "superadmin" || user?.isSuperAdmin === true;
   };
 
   /**
@@ -373,6 +382,7 @@ export function UserProvider({ children }) {
     canEdit,
     canDelete,
     isAdmin,
+    isSuperAdmin,
     getUserRole,
     getUserPermissions,
     isActive,
