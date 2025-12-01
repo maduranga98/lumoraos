@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   collection,
   getDocs,
@@ -84,7 +84,7 @@ const MaterialMovements = () => {
       loadSuppliers();
       loadAllMovements();
     }
-  }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentUser, loadMaterials, loadSuppliers, loadAllMovements]);
 
   // Filter movements with pagination
   useEffect(() => {
@@ -128,7 +128,7 @@ const MaterialMovements = () => {
     setFilteredMovements(paginated);
   }, [movements, searchTerm, filterType, filterMaterial, currentPage, itemsPerPage]);
 
-  const loadMaterials = async () => {
+  const loadMaterials = useCallback(async () => {
     try {
       const materialsQuery = query(
         collection(db, "raw_materials"),
@@ -145,9 +145,9 @@ const MaterialMovements = () => {
       setErrorMessage("Failed to load materials. Please refresh the page.");
       setShowError(true);
     }
-  };
+  }, []);
 
-  const loadSuppliers = async () => {
+  const loadSuppliers = useCallback(async () => {
     try {
       const suppliersQuery = query(
         collection(db, "suppliers"),
@@ -162,10 +162,10 @@ const MaterialMovements = () => {
     } catch (error) {
       console.error("Error loading suppliers:", error);
     }
-  };
+  }, []);
 
   // Fixed: Improved performance and sorting
-  const loadAllMovements = async () => {
+  const loadAllMovements = useCallback(async () => {
     try {
       const allMovements = [];
 
@@ -226,7 +226,7 @@ const MaterialMovements = () => {
       setErrorMessage("Failed to load movements. Please try again.");
       setShowError(true);
     }
-  };
+  }, []);
 
   const handleInputChange = (field) => (e) => {
     let value = e.target.value;
