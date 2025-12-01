@@ -101,10 +101,12 @@ const UserList = () => {
         orderBy("createdAt", "desc")
       );
       const employeesSnapshot = await getDocs(employeesQuery);
-      const employeesData = employeesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const employeesData = employeesSnapshot.docs
+        .map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+        .filter((emp) => emp.roleId !== "superadmin"); // Filter out super admins
       setEmployees(employeesData);
     } catch (error) {
       console.error("Error loading employees:", error);
@@ -119,10 +121,12 @@ const UserList = () => {
     try {
       const rolesQuery = query(collection(db, "roles"), orderBy("name"));
       const rolesSnapshot = await getDocs(rolesQuery);
-      const rolesData = rolesSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const rolesData = rolesSnapshot.docs
+        .map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+        .filter((role) => role.id !== "superadmin"); // Filter out superadmin role
       setRoles(rolesData);
     } catch (error) {
       console.error("Error loading roles:", error);

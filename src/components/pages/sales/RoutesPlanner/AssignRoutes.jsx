@@ -40,7 +40,8 @@ const AssignRoutes = () => {
       const salesRepsRef = collection(db, "users");
       const salesRepsQuery = query(
         salesRepsRef,
-        where("role", "==", "Sales Rep")
+        where("roleId", "==", "sales_rep"),
+        where("status", "==", "active")
       );
       const snapshot = await getDocs(salesRepsQuery);
 
