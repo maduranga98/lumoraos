@@ -138,12 +138,35 @@ export const PERMISSIONS = {
       MANAGE_ROLES: "settings_manage_roles",
     },
   },
+
+  // Super Admin - System Administration
+  SUPERADMIN: {
+    module: "superadmin",
+    label: "Super Admin",
+    permissions: {
+      MANAGE_ALL_USERS: "superadmin_manage_all_users",
+      ACTIVATE_USERS: "superadmin_activate_users",
+      DEACTIVATE_USERS: "superadmin_deactivate_users",
+      REGISTER_USERS: "superadmin_register_users",
+      DELETE_USERS: "superadmin_delete_users",
+      VIEW_SYSTEM_LOGS: "superadmin_view_system_logs",
+      MANAGE_ADMINS: "superadmin_manage_admins",
+    },
+  },
 };
 
 /**
  * Predefined Roles with Default Permissions
  */
 export const PREDEFINED_ROLES = {
+  SUPER_ADMIN: {
+    id: "superadmin",
+    name: "Super Administrator",
+    description: "Ultimate system access - can manage all users and system settings",
+    permissions: "all", // Special case - all permissions including super admin
+    isSuperAdmin: true,
+  },
+
   ADMIN: {
     id: "admin",
     name: "Administrator",
