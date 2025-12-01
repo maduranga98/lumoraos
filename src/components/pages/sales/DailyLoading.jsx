@@ -35,6 +35,7 @@ const DailyLoading = () => {
   const [products, setProducts] = useState([]);
   const [batches, setBatches] = useState([]);
   const [stockItems, setStockItems] = useState([]);
+  const [roles, setRoles] = useState([]);
 
   const [currentItem, setCurrentItem] = useState({
     productId: "",
@@ -143,6 +144,20 @@ const DailyLoading = () => {
     }
   }, [formData.repId, assignments]);
 
+  const fetchRoles = useCallback(async () => {
+    try {
+      const rolesSnapshot = await getDocs(collection(db, "roles"));
+      const rolesData = rolesSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setRoles(rolesData);
+    } catch (error) {
+      console.error("Error fetching roles:", error);
+      throw error;
+    }
+  }, []);
+
   const fetchAllData = useCallback(async () => {
     setFetchingData(true);
     try {
@@ -151,6 +166,7 @@ const DailyLoading = () => {
         fetchVehicles(),
         fetchProducts(),
         fetchAssignments(),
+        fetchRoles(),
       ]);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -159,7 +175,7 @@ const DailyLoading = () => {
     } finally {
       setFetchingData(false);
     }
-  }, [fetchEmployees, fetchVehicles, fetchProducts, fetchAssignments]);
+  }, [fetchEmployees, fetchVehicles, fetchProducts, fetchAssignments, fetchRoles]);
 
   useEffect(() => {
     if (currentUser) {
@@ -420,7 +436,13 @@ const DailyLoading = () => {
     return null;
   }
 
-  const salesReps = employees.filter((emp) => emp.role === "Sales Rep");
+  const salesReps = employees.filter((emp) => emp.roleId === "sales_rep" && emp.status === "active");
+  const activeEmployees = employees.filter((emp) => emp.status === "active" && emp.roleId !== "superadmin");
+
+  const getRoleName = (roleId) => {
+    const role = roles.find((r) => r.id === roleId);
+    return role?.name || roleId || "Unknown";
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -536,9 +558,9 @@ const DailyLoading = () => {
                     required
                   >
                     <option value="">Select driver</option>
-                    {employees.map((emp) => (
+                    {activeEmployees.map((emp) => (
                       <option key={emp.id} value={emp.id}>
-                        {emp.fullName} - {emp.role}
+                        {emp.fullName} - {getRoleName(emp.roleId)}
                       </option>
                     ))}
                   </select>
@@ -559,9 +581,9 @@ const DailyLoading = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   >
                     <option value="">Select helper (optional)</option>
-                    {employees.map((emp) => (
+                    {activeEmployees.map((emp) => (
                       <option key={emp.id} value={emp.id}>
-                        {emp.fullName} - {emp.role}
+                        {emp.fullName} - {getRoleName(emp.roleId)}
                       </option>
                     ))}
                   </select>
